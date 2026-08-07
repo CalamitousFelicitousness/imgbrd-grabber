@@ -126,6 +126,9 @@ class DownloadsTab : public QWidget
 		QList<DownloadQueryImage> m_batchs;
 		QMap<int, DownloadQueryGroup> m_batchPending;
 		QSet<int> m_batchDownloading;
+		// Batches in this run that already had a result: their row keeps showing it until the
+		// run actually reaches them
+		QSet<int> m_batchPendingRewind;
 		QSet<int> m_batchUniqueDownloading;
 		QList<DownloadQueryGroup> m_groupBatchs;
 		QList<BatchDownloadImage> m_getAllRemaining, m_getAllDownloading, m_getAllFailed, m_getAllSkippedImages;

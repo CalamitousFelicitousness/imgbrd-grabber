@@ -576,13 +576,32 @@ void DownloadsTab::getAll(bool all)
 			resume = false;
 		}
 	}
+	m_batchPendingRewind.clear();
 	for (const int b : m_batchDownloading) {
-		if (m_groupBatchs[b].progressFinished || !resume) {
-			m_groupBatchs[b].progressVal = 0;
+		const bool wasFinished = m_groupBatchs[b].progressFinished;
+
+		// The copy this run downloads from always starts over unless we are resuming:
+		// PackLoader skips progressVal/perpage pages, so an already-finished batch would
+		// otherwise jump straight past its last page and fetch nothing.
+		if (wasFinished || !resume) {
 			m_batchPending[b].progressVal = 0;
 		}
-		m_groupBatchs[b].progressFinished = false;
 		m_batchPending[b].progressFinished = false;
+
+		// The row in the table is a separate matter. A batch that already completed keeps its
+		// tick and its count until this run actually reaches it (see getAllGetImage): wiping
+		// them up-front made pressing Start - or answering "No" to the resume prompt, which is
+		// only ever about *unfinished* batches - look like every previous result had been
+		// thrown away, and a run cancelled before reaching the batch left it that way for good.
+		if (wasFinished) {
+			m_batchPendingRewind.insert(b);
+			continue;
+		}
+
+		if (!resume) {
+			m_groupBatchs[b].progressVal = 0;
+		}
+		m_groupBatchs[b].progressFinished = false;
 
 		// Reset the displayed status only for the batches actually being (re)started. This
 		// used to run over every batch in the table, which stamped status 0 onto rows that
@@ -931,6 +950,12 @@ void DownloadsTab::getAllGetImage(const BatchDownloadImage &download, int siteId
 	QString filename = download.query()->filename;
 	QString path = download.query()->path;
 	if (siteId >= 0) {
+		// First image this run pulls for that batch: only now does its row give up the result
+		// of the previous run.
+		if (m_batchPendingRewind.remove(row)) {
+			m_groupBatchs[row].progressVal = 0;
+			m_groupBatchs[row].progressFinished = false;
+		}
 		m_groupBatchsModel->setStatus(m_groupBatchs[row], 1);
 	}
 
@@ -1147,6 +1172,12 @@ void DownloadsTab::getAllFinished()
 	// Mark downloads as finished
 	const bool wasCancelled = m_progressDialog->cancelled();
 	for (const int b : m_batchDownloading) {
+		// A batch this run never got to still shows the result of the previous one. Leave it
+		// exactly as it was rather than stamping it with an outcome it did not take part in.
+		if (wasCancelled && m_batchPendingRewind.contains(b)) {
+			continue;
+		}
+
 		// A cancelled run did not finish. Marking it finished anyway made the batch ineligible
 		// for the resume prompt (resumeCount skips finished batches) and then wiped its
 		// progressVal on the next run, so cancelling silently threw away partial progress.
