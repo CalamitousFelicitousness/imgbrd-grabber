@@ -545,9 +545,6 @@ void DownloadsTab::getAll(bool all)
 	}
 	m_getAllLimit = m_batchs.size();
 
-	for (const auto &batch : m_groupBatchs) {
-		m_groupBatchsModel->setStatus(batch, 0);
-	}
 	m_profile->getCommands().before();
 	m_batchDownloading.clear();
 
@@ -586,6 +583,13 @@ void DownloadsTab::getAll(bool all)
 		}
 		m_groupBatchs[b].progressFinished = false;
 		m_batchPending[b].progressFinished = false;
+
+		// Reset the displayed status only for the batches actually being (re)started. This
+		// used to run over every batch in the table, which stamped status 0 onto rows that
+		// were not part of this run - and because an entry in the model's m_statuses map
+		// suppresses the progressVal-derived fallback, their real progress stayed hidden for
+		// the rest of the session even though progressVal itself was never touched.
+		m_groupBatchsModel->setStatus(m_groupBatchs[b], m_groupBatchs[b].progressVal > 0 ? 1 : 0);
 	}
 
 	// Confirm before downloading possibly more than 10,000 images
@@ -1141,8 +1145,21 @@ void DownloadsTab::getAllFinished()
 	);
 
 	// Mark downloads as finished
+	const bool wasCancelled = m_progressDialog->cancelled();
 	for (const int b : m_batchDownloading) {
-		m_groupBatchs[b].progressFinished = true;
+		// A cancelled run did not finish. Marking it finished anyway made the batch ineligible
+		// for the resume prompt (resumeCount skips finished batches) and then wiped its
+		// progressVal on the next run, so cancelling silently threw away partial progress.
+		m_groupBatchs[b].progressFinished = !wasCancelled;
+
+		// Also settle the row in the table. The per-image handler only promotes a batch to
+		// "done" once progressVal reaches total, which never happens for a batch whose images
+		// were all skipped (already on disk, blacklisted, ...) or that simply yielded fewer
+		// images than its declared total - leaving the row stuck on the "downloading" icon,
+		// because an entry in the model's m_statuses map suppresses the derived status.
+		m_groupBatchsModel->setStatus(m_groupBatchs[b], wasCancelled
+			? (m_groupBatchs[b].progressVal > 0 ? 1 : 0)
+			: 2);
 	}
 
 	// Final action

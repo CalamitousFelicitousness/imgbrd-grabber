@@ -27,6 +27,7 @@ class Monitor
 		void setLastSuccess(const QDateTime &lastSuccess);
 		const QDateTime &lastCheck() const;
 		void setLastCheck(const QDateTime &lastCheck);
+		bool forceRun() const;
 		int cumulated() const;
 		bool preciseCumulated() const;
 		void setCumulated(int cumulated, bool isPrecise);

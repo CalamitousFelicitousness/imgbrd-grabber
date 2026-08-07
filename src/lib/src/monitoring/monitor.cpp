@@ -153,6 +153,11 @@ void Monitor::setForceRun()
 	m_forceRun = true;
 }
 
+bool Monitor::forceRun() const
+{
+	return m_forceRun;
+}
+
 
 void Monitor::toJson(QJsonObject &json) const
 {

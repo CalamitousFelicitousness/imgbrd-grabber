@@ -292,6 +292,14 @@ void ImageDownloader::loadImage(bool rateLimit)
 		return;
 	}
 
+	// Opt-in integrity check. Only valid for the full-size original with a known md5: a sample
+	// is a different file and would never match, and any conversion happens after this point.
+	const bool verifyMd5 = m_profile->getSettings()->value("Save/verifyMd5", false).toBool()
+		&& !m_tryingSample
+		&& m_size == Image::Size::Full
+		&& !m_image->md5().isEmpty();
+	m_fileDownloader.setExpectedMd5(verifyMd5 ? m_image->md5() : QString());
+
 	// If we can't start writing for some reason, return an error
 	if (!m_fileDownloader.start(m_reply, m_temporaryPath)) {
 		emit saved(m_image, makeResult(m_paths, Image::SaveResult::Error));

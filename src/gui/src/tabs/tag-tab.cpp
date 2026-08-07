@@ -255,12 +255,26 @@ void TagTab::getAll()
 
 	QList<QSharedPointer<Page>> pages = this->getPagesToDownload();
 	for (const QSharedPointer<Page> &page : pages) {
+		// Skip sources the user has unticked. getPagesToDownload() returns every page the
+		// tab still holds, and unticking a source does not drop its page from m_pages.
+		if (!m_selectedSources.isEmpty() && !m_selectedSources.contains(page->site())) {
+			continue;
+		}
+
 		const int highLimit = page->highLimit();
 		const int currentCount = page->pageImageCount();
 		const int imageCount = page->imagesCount() >= 0 ? page->imagesCount() : page->maxImagesCount();
 		const int total = imageCount > 0 ? qMax(currentCount, imageCount) : -1;
-		const int perPage = highLimit > 0 ? (imageCount > 0 ? qMin(highLimit, imageCount) : highLimit) : currentCount;
-		if ((perPage == 0 && total == 0) || (currentCount == 0 && imageCount <= 0)) {
+		int perPage = highLimit > 0 ? (imageCount > 0 ? qMin(highLimit, imageCount) : highLimit) : currentCount;
+
+		// A source that has not finished loading reports currentCount == 0 and an unknown
+		// imageCount. Queue it anyway with an unknown total (-1, already a supported value
+		// on the line below) so the batch downloader resolves it and reports "0 results",
+		// instead of the source silently vanishing from the download queue.
+		if (perPage <= 0) {
+			perPage = ui->spinImagesPerPage->value();
+		}
+		if (perPage <= 0) {
 			continue;
 		}
 
