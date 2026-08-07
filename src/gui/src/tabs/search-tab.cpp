@@ -76,6 +76,12 @@ void SearchTab::init()
 		connect(ui_checkMergeResults, &QCheckBox::toggled, this, &SearchTab::setMergeResultsMode);
 	}
 
+	// Show how many sources have finished loading in the merge progress bar
+	if (ui_progressMergeResults != nullptr) {
+		ui_progressMergeResults->setFormat(tr("%v / %m sources"));
+		ui_progressMergeResults->setTextVisible(true);
+	}
+
 	// Fill post-filter explicitely if necessary
 	if (m_settings->value("globalPostFilterExplicit", false).toBool()) {
 		QString globalPostFilter = m_settings->value("globalPostFilter").toString();
@@ -304,6 +310,7 @@ void SearchTab::clear()
 	}
 
 	m_pages.clear();
+	m_sourceStatuses.clear();
 	m_images.clear();
 
 	m_selectedImagesPtrs.clear();
@@ -357,6 +364,8 @@ void SearchTab::finishedLoading(Page *page)
 		return;
 	}
 
+	setSourceStatus(page, false);
+
 	m_lastPageInformation = page->pageInformation();
 
 	// Filter images depending on tabs
@@ -391,6 +400,8 @@ void SearchTab::finishedLoading(Page *page)
 
 void SearchTab::failedLoading(Page *page)
 {
+	setSourceStatus(page, true);
+
 	if (m_stop) {
 		return;
 	}
@@ -443,7 +454,18 @@ void SearchTab::postLoading(Page *page, const QList<QSharedPointer<Image>> &imag
 	m_page++;
 
 	const bool merged = ui_checkMergeResults != nullptr && ui_checkMergeResults->isChecked();
-	const bool finished = m_page == m_pages.count() || (merged && ui_progressMergeResults != nullptr && ui_progressMergeResults->value() == ui_progressMergeResults->maximum());
+
+	// A load is over once every source answered, whether it returned results, nothing or an error
+	bool anyLoading = false;
+	for (const SourceStatus &status : qAsConst(m_sourceStatuses)) {
+		if (status.loading) {
+			anyLoading = true;
+			break;
+		}
+	}
+	const bool finished = m_sourceStatuses.isEmpty()
+		? m_page == m_pages.count()
+		: !anyLoading;
 
 	if (merged) {
 		// Increase the progress bar status
@@ -456,18 +478,7 @@ void SearchTab::postLoading(Page *page, const QList<QSharedPointer<Image>> &imag
 			ui_stackedMergeResults->setCurrentIndex(1);
 		}
 
-		// Create the label when loading the first page
-		if (m_page == 1 && m_siteLabels.isEmpty()) {
-			auto *txt = new QLabel(this);
-			txt->setOpenExternalLinks(true);
-			setMergedLabelText(txt, m_images);
-			m_siteLabels.insert(nullptr, txt);
-
-			ui_layoutResults->addWidget(txt, 0, 0);
-			ui_layoutResults->setRowMinimumHeight(0, txt->sizeHint().height() + 10);
-		} else if (!m_siteLabels.isEmpty()) {
-			setMergedLabelText(m_siteLabels[nullptr], m_images);
-		}
+		updateMergedLabel();
 	}
 
 	// Load thumbnails
@@ -716,6 +727,33 @@ void SearchTab::addResultsPage(Page *page, const QList<QSharedPointer<Image>> &i
 		addLayout(m_siteLayouts[page->site()], page_y + 1, page_x);
 	}
 }
+void SearchTab::setSourceStatus(Page *page, bool failed)
+{
+	SourceStatus &status = m_sourceStatuses[page->website()];
+	status.site = page->site();
+	status.loading = false;
+	status.failed = failed || !page->isValid() || !page->errors().isEmpty();
+	status.error = page->errors().join(", ");
+}
+
+void SearchTab::updateMergedLabel()
+{
+	QLabel *txt = m_siteLabels.value(nullptr, nullptr);
+	const bool isNew = txt == nullptr;
+	if (isNew) {
+		txt = new QLabel(this);
+		txt->setOpenExternalLinks(true);
+		m_siteLabels.insert(nullptr, txt);
+	}
+
+	setMergedLabelText(txt, m_images);
+
+	if (isNew) {
+		ui_layoutResults->addWidget(txt, 0, 0);
+		ui_layoutResults->setRowMinimumHeight(0, txt->sizeHint().height() + 10);
+	}
+}
+
 void SearchTab::setMergedLabelText(QLabel *txt, const QList<QSharedPointer<Image>> &images)
 {
 	int maxPage = 0;
@@ -749,8 +787,69 @@ void SearchTab::setMergedLabelText(QLabel *txt, const QList<QSharedPointer<Image
 		}
 	}
 
+	// Detail every source separately, so a pending source cannot be mistaken for an empty one
 	QString links;
-	if (m_pages.count() > 5) {
+	if (!m_sourceStatuses.isEmpty()) {
+		QStringList parts, tooltip;
+		int loading = 0, failed = 0;
+
+		for (auto it = m_sourceStatuses.constBegin(); it != m_sourceStatuses.constEnd(); ++it) {
+			const SourceStatus &status = it.value();
+			const QString name = status.site != nullptr ? status.site->name() : it.key();
+
+			// What this source returned so far, and how much it claims to have in total
+			int count = 0;
+			int total = -1;
+			QUrl url;
+			const QList<QSharedPointer<Page>> pages = m_pages.value(it.key());
+			for (const QSharedPointer<Page> &p : pages) {
+				count += p->images().count();
+			}
+			if (!pages.isEmpty() && pages.first()->isValid()) {
+				total = pages.first()->imagesCount();
+				url = pages.last()->url();
+			}
+
+			QString state, detail;
+			if (status.loading) {
+				state = QStringLiteral("<span style=\"color:#808080\">...</span>");
+				detail = tr("loading");
+				loading++;
+			} else if (status.failed) {
+				state = QStringLiteral("<span style=\"color:#d32f2f\">!</span>");
+				detail = status.error.isEmpty() ? tr("failed") : tr("failed: %1").arg(status.error);
+				failed++;
+			} else if (count == 0) {
+				state = QStringLiteral("<span style=\"color:#808080\">0</span>");
+				detail = tr("no result");
+			} else {
+				state = QString::number(count);
+				detail = total > 0 ? tr("%1 of %2").arg(count).arg(total) : tr("%1 results").arg(count);
+			}
+
+			const QString link = url.isEmpty()
+				? name.toHtmlEscaped()
+				: "<a href=\"" + url.toString().toHtmlEscaped() + "\">" + name.toHtmlEscaped() + "</a>";
+			parts.append(link + " (" + state + ")");
+			tooltip.append(name + " - " + detail);
+		}
+
+		if (parts.count() > 5) {
+			QStringList summary;
+			summary.append(tr("%1 done").arg(parts.count() - loading - failed));
+			if (loading > 0) {
+				summary.append(tr("%1 loading").arg(loading));
+			}
+			if (failed > 0) {
+				summary.append(tr("%1 failed").arg(failed));
+			}
+			links = tr("Multiple sources") + " (" + summary.join(", ") + ")";
+		} else {
+			links = parts.join(", ");
+		}
+
+		txt->setToolTip(tooltip.join(QChar(QChar::LineFeed)));
+	} else if (m_pages.count() > 5) {
 		links = tr("Multiple sources");
 	} else {
 		for (const auto &ps : qAsConst(m_pages)) {
@@ -1368,15 +1467,27 @@ void SearchTab::loadPage()
 	m_page = 0;
 
 	// Reset merged state
+	const QList<Site*> sites = loadSites();
 	if (merged && ui_progressMergeResults != nullptr) {
 		ui_progressMergeResults->setValue(0);
-		ui_progressMergeResults->setMaximum(m_pages.count());
+		ui_progressMergeResults->setMaximum(sites.count());
 	}
+
 	if (ui_stackedMergeResults != nullptr) {
 		ui_stackedMergeResults->setCurrentIndex(merged ? 0 : 1);
 	}
 
-	for (Site *site : loadSites()) {
+	// Any page can call failedLoading() synchronously below, so stop ignoring results right away
+	m_stop = false;
+
+	for (Site *site : sites) {
+		// Mark the source as loading, so it shows up as pending until it answers
+		SourceStatus &status = m_sourceStatuses[site->url()];
+		status.site = site;
+		status.loading = true;
+		status.failed = false;
+		status.error.clear();
+
 		// Stored URL
 		SearchQuery query = m_lastQuery;
 		if (m_lastUrls.contains(site->url())) {
@@ -1404,6 +1515,7 @@ void SearchTab::loadPage()
 			m_pages.insert(page->website(), QList<QSharedPointer<Page>>());
 		}
 		m_pages[page->website()].append(QSharedPointer<Page>(page));
+		status.site = page->site();
 
 		// Set up the layout
 		if (!merged) {
@@ -1414,8 +1526,6 @@ void SearchTab::loadPage()
 			}
 			m_siteLayouts[site]->addLayout(pageLayout);
 		}
-
-		m_stop = false;
 
 		// Load tags if necessary
 		if (m_settings->value("useregexfortags", true).toBool()) {
@@ -1428,6 +1538,11 @@ void SearchTab::loadPage()
 	}
 	if (merged && !m_layouts.empty() && m_endlessLoadOffset == 0) {
 		addLayout(m_layouts[nullptr], 1, 0);
+	}
+
+	// Show the per-source status immediately instead of waiting for the first answer
+	if (merged) {
+		updateMergedLabel();
 	}
 }
 

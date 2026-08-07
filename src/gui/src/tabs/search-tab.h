@@ -113,6 +113,8 @@ class SearchTab : public QWidget
 		void loadPage();
 		virtual void addResultsPage(Page *page, const QList<QSharedPointer<Image>> &images, bool merged, int filteredImages, const QString &noResultsMessage = nullptr);
 		void setMergedLabelText(QLabel *txt, const QList<QSharedPointer<Image>> &images);
+		void updateMergedLabel();
+		void setSourceStatus(Page *page, bool failed);
 		virtual void setPageLabelText(QLabel *txt, Page *page, const QList<QSharedPointer<Image>> &images, int filteredImages, const QString &noResultsMessage = nullptr);
 		void addResultsImage(const QSharedPointer<Image> &img, Page *page, bool merge = false);
 		void finishedLoadingPreview();
@@ -173,6 +175,15 @@ class SearchTab : public QWidget
 		QMap<ImagePreview*, QSharedPointer<Image>> m_thumbnailsLoading;
 		QList<QSharedPointer<Image>> m_images;
 		QMap<QString, QList<QSharedPointer<Page>>> m_pages;
+		// Per-source loading state, so merged results can tell "still loading" from "no result"
+		struct SourceStatus
+		{
+			Site *site = nullptr;
+			bool loading = true;
+			bool failed = false;
+			QString error;
+		};
+		QMap<QString, SourceStatus> m_sourceStatuses;
 		QMap<QString, QSharedPointer<Page>> m_lastPages;
 		QMap<Site*, QLabel*> m_siteLabels;
 		QMap<Site*, QVBoxLayout*> m_siteLayouts;
