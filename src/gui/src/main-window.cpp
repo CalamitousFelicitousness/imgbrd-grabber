@@ -88,7 +88,7 @@ void MainWindow::init(const QStringList &args, const QMap<QString, QString> &par
 	ui->setupUi(this);
 
 	if (m_settings->value("Log/show", true).toBool()) {
-		m_logTab = new LogTab(this);
+		m_logTab = new LogTab(m_settings, this);
 		ui->tabWidget->addTab(m_logTab, m_logTab->windowTitle());
 		connect(m_logTab, &QWidget::windowTitleChanged, this, &MainWindow::tabTitleChanged);
 	}

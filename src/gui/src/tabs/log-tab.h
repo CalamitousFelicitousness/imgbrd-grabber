@@ -4,6 +4,9 @@
 #include <QWidget>
 
 
+class QSettings;
+
+
 namespace Ui
 {
 	class LogTab;
@@ -15,7 +18,7 @@ class LogTab : public QWidget
 	Q_OBJECT
 
 	public:
-		explicit LogTab(QWidget *parent = nullptr);
+		explicit LogTab(QSettings *settings, QWidget *parent = nullptr);
 		~LogTab() override;
 
 	public slots:
@@ -27,8 +30,12 @@ class LogTab : public QWidget
 	protected:
 		void changeEvent(QEvent *event) override;
 
+	private slots:
+		void autoScrollToggled(bool checked);
+
 	private:
 		Ui::LogTab *ui;
+		QSettings *m_settings;
 };
 
 #endif // LOG_TAB_H

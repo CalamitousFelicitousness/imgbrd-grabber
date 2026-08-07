@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QScrollBar>
 #include <ui_log-tab.h>
 #include "functions.h"
@@ -11,10 +12,13 @@
 #include "utils/logging.h"
 
 
-LogTab::LogTab(QWidget *parent)
-	: QWidget(parent), ui(new Ui::LogTab)
+LogTab::LogTab(QSettings *settings, QWidget *parent)
+	: QWidget(parent), ui(new Ui::LogTab), m_settings(settings)
 {
 	ui->setupUi(this);
+
+	ui->checkAutoScroll->setChecked(m_settings->value("Log/autoScroll", true).toBool());
+	connect(ui->checkAutoScroll, &QCheckBox::toggled, this, &LogTab::autoScrollToggled);
 
 	// Load already written log
 	QFile logFile(Logger::getInstance().logFile());
@@ -36,8 +40,30 @@ LogTab::~LogTab()
 
 void LogTab::write(const QString &msg)
 {
+	auto *scrollBar = ui->labelLog->verticalScrollBar();
+	const int previous = scrollBar->value();
+
 	ui->labelLog->appendHtml(logToHtml(msg));
-	ui->labelLog->verticalScrollBar()->setValue(ui->labelLog->verticalScrollBar()->maximum());
+
+	// Appending moves the cursor to the end, which drags the view with it. Only follow the
+	// newest line when the user asked for it - otherwise restore where they were reading, so
+	// a busy log does not yank the view away mid-sentence.
+	if (ui->checkAutoScroll->isChecked()) {
+		scrollBar->setValue(scrollBar->maximum());
+	} else {
+		scrollBar->setValue(previous);
+	}
+}
+
+void LogTab::autoScrollToggled(bool checked)
+{
+	m_settings->setValue("Log/autoScroll", checked);
+
+	// Re-enabling should jump straight to the newest line rather than waiting for one to arrive.
+	if (checked) {
+		auto *scrollBar = ui->labelLog->verticalScrollBar();
+		scrollBar->setValue(scrollBar->maximum());
+	}
 }
 
 void LogTab::clear()
