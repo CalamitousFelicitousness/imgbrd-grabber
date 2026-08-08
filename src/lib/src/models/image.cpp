@@ -756,7 +756,11 @@ QString Image::postSaving(const QString &originalPath, Size size, bool addMd5, b
 		for (auto it = logFiles.constBegin(); it != logFiles.constEnd(); ++it) {
 			auto logFile = it.value();
 			const Filename textfileFormat = Filename(logFile["content"].toString());
-			QStringList cont = textfileFormat.path(*this, m_profile, "", count, Filename::Complex);
+			// A conditional filename must not hijack a value. Filename::Complex includes
+			// ConditionalFilenames, and Filename::path returns the *conditional's filename format*
+			// whenever one matches - so with a conditional rule configured, this produced the file's
+			// path here instead of the intended value. Keep ExpandConditionals for <...> blocks.
+			QStringList cont = textfileFormat.path(*this, m_profile, "", count, Filename::ExpandConditionals);
 			if (!cont.isEmpty()) {
 				const int locationType = logFile["locationType"].toInt();
 				QString contents = cont.first();
@@ -880,7 +884,8 @@ QString Image::postSaving(const QString &originalPath, Size size, bool addMd5, b
 				clearAllWindowsProperties(path);
 			}
 			for (const auto &pair : metadataPropsys) {
-				const QStringList values = Filename(pair.second).path(*this, m_profile, "", 0, Filename::Complex);
+				// See the note above postSaving's text-file block: values, not filenames.
+				const QStringList values = Filename(pair.second).path(*this, m_profile, "", 0, Filename::ExpandConditionals);
 				if (!values.isEmpty()) {
 					setWindowsProperty(path, pair.first, values.first());
 				}
@@ -892,7 +897,8 @@ QString Image::postSaving(const QString &originalPath, Size size, bool addMd5, b
 		QMap<QString, QString> metadata;
 		const auto metadataExiftool = getMetadataExiftool(m_settings);
 		for (const auto &pair : metadataExiftool) {
-			const QStringList values = Filename(pair.second).path(*this, m_profile, "", 0, Filename::Complex);
+			// See the note above postSaving's text-file block: values, not filenames.
+			const QStringList values = Filename(pair.second).path(*this, m_profile, "", 0, Filename::ExpandConditionals);
 			if (!values.isEmpty()) {
 				metadata.insert(pair.first, values.first());
 			}
