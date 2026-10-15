@@ -192,6 +192,32 @@ TEST_CASE("ImageDownloader")
 		assertDownload(profile, img, &downloader, expected, false);
 	}
 
+	SECTION("NetworkErrorInvalidatesDetails")
+	{
+		const QString detailsPage = QStringLiteral("tests/resources/pages/danbooru.donmai.us/aeb54553c54f6d4b3ddaf297b7b01fd7.html");
+
+		auto img = createImage(profile, site);
+		ImageDownloader downloader(profile, img, "%copyright%.%ext%", "tests/resources/tmp", 1, false, false, nullptr, true, false);
+
+		QList<ImageSaveResult> expected;
+		expected.append({ QDir::toNativeSeparators("tests/resources/tmp/to heart 2.jpg"), Image::Size::Full, Image::SaveResult::NetworkError });
+
+		// The details load succeeds and caches the file URL, the download of that file does not
+		CustomNetworkAccessManager::NextFiles.append(detailsPage);
+		CustomNetworkAccessManager::NextFiles.append("500");
+		assertDownload(profile, img, &downloader, expected, false);
+
+		// A retry has to be able to ask for a fresh URL, not replay the one that just failed
+		CustomNetworkAccessManager::NextFiles.append(detailsPage);
+		QSignalSpy detailsSpy(img.data(), SIGNAL(finishedLoadingTags(Image::LoadTagsResult)));
+		img->loadDetails();
+		detailsSpy.wait(2000);
+
+		// Consuming the queued response is what proves the request went out rather than being
+		// answered from the cache the failed attempt left behind
+		REQUIRE(CustomNetworkAccessManager::NextFiles.isEmpty());
+	}
+
 	SECTION("OriginalMd5")
 	{
 		auto img = createImage(profile, site);

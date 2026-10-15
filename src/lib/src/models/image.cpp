@@ -484,6 +484,12 @@ void Image::loadDetails(bool rateLimit)
 
 	connect(m_loadDetails, &NetworkReply::finished, this, &Image::parseDetails);
 }
+// Makes the next loadDetails() hit the network instead of returning the cached copy
+void Image::invalidateDetails()
+{
+	m_loadedDetails = false;
+}
+
 void Image::abortTags()
 {
 	if (m_loadingDetails && m_loadDetails->isRunning()) {

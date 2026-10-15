@@ -131,6 +131,7 @@ class Image : public QObject, public Downloadable
 
 	public slots:
 		void loadDetails(bool rateLimit = false);
+		void invalidateDetails();
 		void abortTags();
 		void parseDetails();
 		void parseUgoiraDetails();

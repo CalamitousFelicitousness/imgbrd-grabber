@@ -4,6 +4,7 @@
 #include <QScopedPointer>
 #include <QSettings>
 #include <QSignalSpy>
+#include "custom-network-access-manager.h"
 #include "loader/token.h"
 #include "models/image.h"
 #include "models/image-factory.h"
@@ -186,6 +187,29 @@ TEST_CASE("Image")
 		REQUIRE(tags[3].type().name() == QString("general"));
 		REQUIRE(tags[3].count() == 2125000);
 	}
+	SECTION("LoadDetailsCachedUntilInvalidated")
+	{
+		const QString detailsPage = QStringLiteral("tests/resources/pages/danbooru.donmai.us/aeb54553c54f6d4b3ddaf297b7b01fd7.html");
+
+		QSignalSpy spy(img.data(), SIGNAL(finishedLoadingTags(Image::LoadTagsResult)));
+		CustomNetworkAccessManager::NextFiles.append(detailsPage);
+		img->loadDetails();
+		REQUIRE(spy.wait());
+		REQUIRE(CustomNetworkAccessManager::NextFiles.isEmpty());
+
+		// A second load is answered from the cache without touching the network
+		CustomNetworkAccessManager::NextFiles.append(detailsPage);
+		img->loadDetails();
+		REQUIRE(CustomNetworkAccessManager::NextFiles.count() == 1);
+
+		// Signed file URLs expire, so a failed download has to be able to ask for a fresh one
+		img->invalidateDetails();
+		QSignalSpy spy2(img.data(), SIGNAL(finishedLoadingTags(Image::LoadTagsResult)));
+		img->loadDetails();
+		REQUIRE(spy2.wait());
+		REQUIRE(CustomNetworkAccessManager::NextFiles.isEmpty());
+	}
+
 	SECTION("LoadDetailsAbort")
 	{
 		QSignalSpy spy(img.data(), SIGNAL(finishedLoadingTags(Image::LoadTagsResult)));

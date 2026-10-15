@@ -339,6 +339,11 @@ void ImageDownloader::writeError()
 
 void ImageDownloader::networkError(NetworkReply::NetworkError error, const QString &msg)
 {
+	// Image caches the file URL along with the details, and Sankaku signs those with an `e=` expiry
+	// about an hour out. Without this, a retry replays the dead link and gets an expired-link
+	// placeholder or a 403 instead of the file.
+	m_image->invalidateDetails();
+
 	if (error == NetworkReply::NetworkError::ContentNotFoundError) {
 		QSettings *settings = m_profile->getSettings();
 		ExtensionRotator *extensionRotator = m_image->extensionRotator();
