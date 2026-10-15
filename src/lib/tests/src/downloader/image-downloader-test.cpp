@@ -2,6 +2,7 @@
 #include <QFile>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QTimer>
 #include "custom-network-access-manager.h"
 #include "downloader/image-downloader.h"
 #include "models/filtering/blacklist.h"
@@ -395,5 +396,78 @@ TEST_CASE("ImageDownloader")
 		expected.append({ QDir::toNativeSeparators("tests/resources/tmp/out.png"), Image::Size::Full, Image::SaveResult::Saved });
 
 		assertDownload(profile, img, &downloader, expected, true);
+	}
+}
+
+TEST_CASE("ImageDownloader sidecar tags", "[.][exiftool]")
+{
+	QDir("tests/resources/").mkdir("tmp");
+
+	setupSource("Danbooru (2.0)");
+	setupSite("Danbooru (2.0)", "danbooru.donmai.us");
+
+	const QScopedPointer<Profile> pProfile(makeProfile());
+	auto *profile = pProfile.data();
+	profile->getSettings()->setValue("Save/MetadataExiftoolTagsRoot", "Booru");
+
+	Site *site = profile->getSites().value("danbooru.donmai.us");
+	REQUIRE(site != nullptr);
+
+	QDir dir("tests/resources/tmp/");
+	for (const QString &file : dir.entryList(QDir::Files)) {
+		dir.remove(file);
+	}
+
+	// Exiftool calls keep the event loop spinning, so this sees every state the save passes through
+	int orphans = 0;
+	QTimer poll;
+	poll.setInterval(0);
+	QObject::connect(&poll, &QTimer::timeout, [&orphans]() {
+		for (const QString &file : { QStringLiteral("tests/resources/tmp/out.jpg"), QStringLiteral("tests/resources/tmp/out.png") }) {
+			if (QFile::exists(file) && !QFile::exists(file + ".xmp")) {
+				orphans++;
+			}
+		}
+	});
+
+	SECTION("The sidecar exists before the file appears")
+	{
+		profile->getSettings()->setValue("Save/headerDetection", false);
+
+		auto img = createImage(profile, site);
+		ImageDownloader downloader(profile, img, "out.jpg", "tests/resources/tmp", 1, false, false, nullptr, false, false);
+
+		QList<ImageSaveResult> expected;
+		expected.append({ QDir::toNativeSeparators("tests/resources/tmp/out.jpg"), Image::Size::Full, Image::SaveResult::Saved });
+
+		poll.start();
+		assertDownload(profile, img, &downloader, expected, true);
+		poll.stop();
+
+		REQUIRE(orphans == 0);
+		REQUIRE(QFile::exists("tests/resources/tmp/out.jpg.xmp"));
+	}
+
+	SECTION("The sidecar follows a rename from header detection")
+	{
+		profile->getSettings()->setValue("Save/headerDetection", true);
+
+		auto img = createImage(profile, site);
+		ImageDownloader downloader(profile, img, "out.jpg", "tests/resources/tmp", 1, false, false, nullptr, false, false);
+
+		QList<ImageSaveResult> expected;
+		expected.append({ QDir::toNativeSeparators("tests/resources/tmp/out.png"), Image::Size::Full, Image::SaveResult::Saved });
+
+		poll.start();
+		assertDownload(profile, img, &downloader, expected, true);
+		poll.stop();
+
+		REQUIRE(orphans == 0);
+		REQUIRE(QFile::exists("tests/resources/tmp/out.png.xmp"));
+		REQUIRE(!QFile::exists("tests/resources/tmp/out.jpg.xmp"));
+	}
+
+	for (const QString &file : dir.entryList(QDir::Files)) {
+		dir.remove(file);
 	}
 }

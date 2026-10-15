@@ -49,6 +49,9 @@ bool sortTagsByType(const Tag &, const Tag &);
 bool sortTagsByName(const Tag &, const Tag &);
 bool sortTagsByCount(const Tag &, const Tag &);
 
+// Lightroom HierarchicalSubject values in the form "root|type|tag"
+QStringList hierarchicalTags(const QList<Tag> &tags, const QString &root, const QStringList &skipTypes);
+
 bool operator==(const Tag &t1, const Tag &t2);
 bool operator!=(const Tag &t1, const Tag &t2);
 bool operator<(const Tag &t1, const Tag &t2);

@@ -241,9 +241,29 @@ class ExiftoolWorker : public QObject
 			}
 
 			// If we're here, that means we either only want to write sidecar files, always want both, or an error occurred and we only write sidecars on error
-			const QFileInfo info(file);
-			const QString sidecarFilename = (sidecarFileNoExtension ? info.path() + QDir::separator() + info.completeBaseName() : file) + ".xmp";
-			return execute(sidecarFilename, commands.join("\n"), msecs);
+			commands.append("-overwrite_original"); // The tag sidecar is written before this one
+			return execute(Exiftool::sidecarPath(file, sidecarFileNoExtension), commands.join("\n"), msecs);
+		}
+
+		/**
+		 * Replace one list-type tag in the file's XMP sidecar, creating the sidecar if needed.
+		 *
+		 * Each item is its own assignment and `-sep` is left unset, so an item containing the
+		 * separator setMetadata splits on (`steins;gate`) stays one item.
+		 */
+		bool setSidecarList(const QString &file, const QString &tag, const QStringList &values, bool sidecarFileNoExtension, int msecs)
+		{
+			QStringList commands { "-charset", "filename=utf8" };
+			for (const QString &value : values) {
+				// One argument per line on the -stay_open pipe: a line break would start a new argument
+				if (value.contains('\n') || value.contains('\r')) {
+					log(QStringLiteral("[Exiftool] Skipping a %1 value containing a line break").arg(tag), Logger::Warning);
+					continue;
+				}
+				commands.append("-" + tag + "=" + value);
+			}
+			commands.append({ "-m", "-overwrite_original" });
+			return execute(Exiftool::sidecarPath(file, sidecarFileNoExtension), commands.join("\n"), msecs);
 		}
 
 	private:
@@ -311,6 +331,12 @@ bool Exiftool::isOnRemoteVolume(const QString &path)
 	return device.startsWith(QLatin1String("//")) || device.startsWith(QLatin1String("\\\\"));
 }
 
+QString Exiftool::sidecarPath(const QString &file, bool noExtension)
+{
+	const QFileInfo info(file);
+	return (noExtension ? info.path() + QDir::separator() + info.completeBaseName() : file) + ".xmp";
+}
+
 /**
  * The caller keeps processing events while the worker blocks, so a slow metadata write no longer
  * freezes the interface. Queued calls run one at a time, keeping the single exiftool process
@@ -343,6 +369,11 @@ bool Exiftool::start(int msecs)
 bool Exiftool::setMetadata(const QString &file, const QMap<QString, QString> &metadata, bool clear, bool keepColorProfile, SidecarFile sidecarFile, bool sidecarFileNoExtension, int msecs)
 {
 	return runOnWorker([=]() { return m_worker->setMetadata(file, metadata, clear, keepColorProfile, sidecarFile, sidecarFileNoExtension, msecs); });
+}
+
+bool Exiftool::setSidecarList(const QString &file, const QString &tag, const QStringList &values, bool sidecarFileNoExtension, int msecs)
+{
+	return runOnWorker([=]() { return m_worker->setSidecarList(file, tag, values, sidecarFileNoExtension, msecs); });
 }
 
 bool Exiftool::execute(const QString &file, const QString &command, int msecs)

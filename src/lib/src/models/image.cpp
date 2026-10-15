@@ -818,7 +818,7 @@ QString Image::postSaving(const QString &originalPath, Size size, bool addMd5, b
 			log(QStringLiteral("Invalid file extension (%1 to %2) for `%3`").arg(ext, headerExt, path), Logger::Info);
 			const QFileInfo info(path);
 			const QString newPath = info.path() + QDir::separator() + info.completeBaseName() + "." + headerExt;
-			if (!QFile::rename(path, newPath)) {
+			if (!renameSaved(path, newPath)) {
 				log(QStringLiteral("Error renaming from `%1` to `%2`").arg(path, newPath), Logger::Error);
 			} else {
 				path = QDir::toNativeSeparators(newPath);
@@ -884,6 +884,11 @@ QString Image::postSaving(const QString &originalPath, Size size, bool addMd5, b
 		ext = getExtension(path);
 	}
 
+	// For saves that skip ImageDownloader's write before the file appears: viewer "Save as", conversion output
+	if (!m_sidecarTagsPaths.contains(path)) {
+		writeSidecarTags(path);
+	}
+
 	// Metadata
 	#ifdef WIN_FILE_PROPS
 		const QStringList exts = m_settings->value("Save/MetadataPropsysExtensions", "jpg jpeg mp4").toString().split(' ', Qt::SkipEmptyParts);
@@ -939,6 +944,57 @@ QString Image::postSaving(const QString &originalPath, Size size, bool addMd5, b
 
 	setSavePath(path, size);
 	return path;
+}
+
+/**
+ * Write the tags into the file's XMP sidecar only, never the file itself, whatever its format.
+ */
+bool Image::writeSidecarTags(const QString &path)
+{
+	const QString root = m_settings->value("Save/MetadataExiftoolTagsRoot").toString();
+	if (root.isEmpty()) {
+		return false;
+	}
+
+	const QStringList skipTypes = m_settings->value("Save/MetadataExiftoolTagsSkipTypes", "meta").toString().split(' ', Qt::SkipEmptyParts);
+	const QStringList tagList = hierarchicalTags(m_tags, root, skipTypes);
+	if (tagList.isEmpty()) {
+		return false;
+	}
+
+	Exiftool &exiftool = m_profile->getExiftool();
+	exiftool.start();
+	if (!exiftool.setSidecarList(path, "XMP-lr:HierarchicalSubject", tagList, m_settings->value("Save/MetadataExiftoolSidecarNoExtension", false).toBool())) {
+		return false;
+	}
+
+	m_sidecarTagsPaths.insert(path);
+	return true;
+}
+
+// The sidecar moves first, so the file never sits under its new name without it
+bool Image::renameSaved(const QString &from, const QString &to)
+{
+	const QString nativeTo = QDir::toNativeSeparators(to);
+	if (!m_sidecarTagsPaths.remove(from)) {
+		return QFile::rename(from, nativeTo);
+	}
+
+	const bool noExtension = m_settings->value("Save/MetadataExiftoolSidecarNoExtension", false).toBool();
+	const QString fromSidecar = Exiftool::sidecarPath(from, noExtension);
+	const QString toSidecar = Exiftool::sidecarPath(nativeTo, noExtension);
+	const bool movedSidecar = fromSidecar != toSidecar && QFile::rename(fromSidecar, toSidecar);
+
+	if (!QFile::rename(from, nativeTo)) {
+		if (movedSidecar) {
+			QFile::rename(toSidecar, fromSidecar);
+		}
+		m_sidecarTagsPaths.insert(from);
+		return false;
+	}
+
+	m_sidecarTagsPaths.insert(nativeTo);
+	return true;
 }
 
 void Image::remove(const QStringList &paths)

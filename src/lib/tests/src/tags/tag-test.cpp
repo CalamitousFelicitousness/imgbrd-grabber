@@ -237,4 +237,30 @@ TEST_CASE("Tag")
 		REQUIRE(dest.count() == original.count());
 		REQUIRE(dest.related() == original.related());
 	}
+
+	SECTION("HierarchicalTags")
+	{
+		const QList<Tag> tags {
+			Tag("Hatsune_Miku", "character"),
+			Tag("fate/grand_order", "copyright"),
+			Tag("steins;gate", "copyright"),
+			Tag("sita|skunkette", "character"),
+			Tag("long_hair", "general"),
+			Tag("Long_Hair", "general"),
+			Tag("highres", "meta"),
+			Tag("mystery", "unknown"),
+		};
+
+		REQUIRE(hierarchicalTags(tags, "Booru", { "meta" }) == QStringList {
+			"Booru|character|hatsune miku",
+			"Booru|copyright|fate/grand order",
+			"Booru|copyright|steins;gate",
+			"Booru|character|sita/skunkette",
+			"Booru|general|long hair",
+			"Booru|unknown|mystery",
+		});
+		REQUIRE(hierarchicalTags(tags, "Booru", {}).contains("Booru|meta|highres"));
+		REQUIRE(hierarchicalTags({}, "Booru", {}).isEmpty());
+		REQUIRE(hierarchicalTags({ Tag("two\nlines\r\n-o_x", "general") }, "Booru", {}) == QStringList { "Booru|general|two lines -o x" });
+	}
 }

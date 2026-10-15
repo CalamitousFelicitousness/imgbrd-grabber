@@ -4,6 +4,7 @@
 #include <QMap>
 #include <QMetaType>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include "image-size.h"
 #include "loader/downloadable.h"
@@ -112,6 +113,7 @@ class Image : public QObject, public Downloadable
 		QMap<QString, Token> generateTokens(Profile *profile) const override;
 		SaveResult preSave(const QString &path, Size size) override;
 		QString postSave(const QString &path, Size size, SaveResult result, bool addMd5, bool startCommands, int count, bool basic = false) override;
+		bool writeSidecarTags(const QString &path);
 
 		// Tokens
 		template <typename T>
@@ -128,6 +130,7 @@ class Image : public QObject, public Downloadable
 		void init();
 		QString md5forced() const;
 		QString postSaving(const QString &path, Size size, bool addMd5 = true, bool startCommands = false, int count = 1, bool basic = false);
+		bool renameSaved(const QString &from, const QString &to);
 
 	public slots:
 		void loadDetails(bool rateLimit = false);
@@ -176,6 +179,7 @@ class Image : public QObject, public Downloadable
 		QList<Tag> m_tags;
 		QList<Pool> m_pools;
 		QStringList m_sources;
+		QSet<QString> m_sidecarTagsPaths;
 
 		// Gallery
 		// - Data

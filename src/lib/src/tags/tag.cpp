@@ -1,6 +1,7 @@
 #include "tag.h"
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QSet>
 #include <QStringList>
 #include <utility>
 #include "functions.h"
@@ -195,6 +196,31 @@ bool sortTagsByName(const Tag &s1, const Tag &s2)
 { return s1.text().localeAwareCompare(s2.text()) < 0; }
 bool sortTagsByCount(const Tag &s1, const Tag &s2)
 { return s1.count() > s2.count(); }
+
+QStringList hierarchicalTags(const QList<Tag> &tags, const QString &root, const QStringList &skipTypes)
+{
+	QStringList ret;
+	QSet<QString> seen;
+	for (const Tag &tag : tags) {
+		const QString &type = tag.type().name();
+		if (skipTypes.contains(type)) {
+			continue;
+		}
+
+		// Sites disagree on case; "|" opens a level, and Immich shows a "/" inside one as "|"
+		const QString text = QString(tag.text()).replace('_', ' ').replace('|', '/').simplified().toLower();
+		if (text.isEmpty()) {
+			continue;
+		}
+
+		const QString value = root + "|" + type + "|" + text;
+		if (!seen.contains(value)) {
+			seen.insert(value);
+			ret.append(value);
+		}
+	}
+	return ret;
+}
 
 bool operator==(const Tag &t1, const Tag &t2)
 {

@@ -156,6 +156,11 @@ int ImageDownloader::needExactTags(QSettings *settings) const
 		}
 	}
 
+	// Sidecar tags are grouped by type
+	if (!settings->value("Save/MetadataExiftoolTagsRoot").toString().isEmpty()) {
+		need = qMax(need, 1);
+	}
+
 	#ifdef WIN_FILE_PROPS
 		// Check Windows Property System
 		for (const auto &pair : getMetadataPropsys(settings)) {
@@ -482,6 +487,11 @@ QList<ImageSaveResult> ImageDownloader::afterTemporarySave(Image::SaveResult sav
 			log(QStringLiteral("Impossible to create the destination folder: %1.").arg(dir), Logger::Error);
 			result.append({ path, size, Image::SaveResult::Error });
 			continue;
+		}
+
+		// Before the file appears: Immich never links a sidecar that arrives after it imports the file
+		if (suffix.isEmpty() && m_postSave && (!moved || multipleFiles != "link")) {
+			m_image->writeSidecarTags(path);
 		}
 
 		if (!moved) {
