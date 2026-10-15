@@ -243,7 +243,7 @@ export const source: ISource = {
                     }
                     return {
                         images: images.map(completeImage),
-                        tags: Grabber.regexToTags('<li class="tag-type-(?<type>[^"]+)">(?:[^<]*<a[^>]*>[^<]*</a>)*[^<]*<a[^>]*>(?<name>[^<]*)</a>[^<]*<span[^>]*>\\s*(?<count>\\d+)\\s*</span>', src),
+                        tags: Grabber.regexToTags('<li class="tag-type-(?<type>[^"]+)">(?:[^<]*<a[^>]*>[^<]*</a>)*[^<]*<a[^>]*>\\s*(?<name>[^<]*?)\\s*</a>[^<]*<span[^>]*>\\s*(?<count>\\d+)\\s*</span>', src),
                         pageCount: pageCount ? parseInt(pageCount, 10) / 42 + 1 : undefined,
                     };
                 },
