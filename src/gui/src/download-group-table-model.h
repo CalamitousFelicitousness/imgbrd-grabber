@@ -41,12 +41,11 @@ class DownloadGroupTableModel : public QAbstractTableModel
 		void removed(int position);
 		void changed(int position);
 		void cleared();
-		bool setStatus(const DownloadQueryGroup &download, int status);
+		bool setStatus(int row, DownloadQueryGroup::Status status);
 
 	private:
 		const Profile *m_profile;
 		QList<DownloadQueryGroup> &m_downloads;
-		QMap<int, int> m_statuses;
 };
 
 #endif // DOWNLOAD_GROUP_TABLE_MODEL_H

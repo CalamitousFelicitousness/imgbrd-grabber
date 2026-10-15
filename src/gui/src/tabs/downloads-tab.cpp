@@ -600,15 +600,18 @@ void DownloadsTab::getAll(bool all)
 
 		if (!resume) {
 			m_groupBatchs[b].progressVal = 0;
+			m_groupBatchs[b].counters = {};
 		}
 		m_groupBatchs[b].progressFinished = false;
 
 		// Reset the displayed status only for the batches actually being (re)started. This
-		// used to run over every batch in the table, which stamped status 0 onto rows that
-		// were not part of this run - and because an entry in the model's m_statuses map
-		// suppresses the progressVal-derived fallback, their real progress stayed hidden for
-		// the rest of the session even though progressVal itself was never touched.
-		m_groupBatchsModel->setStatus(m_groupBatchs[b], m_groupBatchs[b].progressVal > 0 ? 1 : 0);
+		// used to run over every batch in the table, which stamped Pending onto rows that
+		// were not part of this run - and because any status but Unknown suppresses the
+		// progressVal-derived fallback, their real progress stayed hidden for the rest of
+		// the session even though progressVal itself was never touched.
+		m_groupBatchsModel->setStatus(b, m_groupBatchs[b].progressVal > 0
+			? DownloadQueryGroup::Status::Downloading
+			: DownloadQueryGroup::Status::Pending);
 	}
 
 	// Confirm before downloading possibly more than 10,000 images
@@ -882,7 +885,7 @@ void DownloadsTab::getAllImageOk(const BatchDownloadImage &download, int siteId,
 		m_groupBatchsModel->changed(row);
 
 		if (m_groupBatchs[row].progressVal >= m_groupBatchs[row].total) {
-			m_groupBatchsModel->setStatus(m_groupBatchs[row], 2);
+			m_groupBatchsModel->setStatus(row, DownloadQueryGroup::Status::Done);
 		}
 	}
 
@@ -955,8 +958,9 @@ void DownloadsTab::getAllGetImage(const BatchDownloadImage &download, int siteId
 		if (m_batchPendingRewind.remove(row)) {
 			m_groupBatchs[row].progressVal = 0;
 			m_groupBatchs[row].progressFinished = false;
+			m_groupBatchs[row].counters = {};
 		}
-		m_groupBatchsModel->setStatus(m_groupBatchs[row], 1);
+		m_groupBatchsModel->setStatus(row, DownloadQueryGroup::Status::Downloading);
 	}
 
 	// Track download progress
@@ -1038,22 +1042,29 @@ void DownloadsTab::getAllGetImageSaved(const QSharedPointer<Image> &img, QList<I
 		}
 	}
 
+	const int siteId = download.siteId(m_groupBatchs);
+	DownloadQueryGroup::Counters *counters = siteId >= 0 ? &m_groupBatchs[getRowForSite(siteId)].counters : nullptr;
+
 	if (res == Image::SaveResult::NetworkError || res == Image::SaveResult::DetailsLoadError) {
 		m_getAllErrors++;
 		m_getAllFailed.append(download);
+		if (counters != nullptr) { counters->failed++; }
 	} else if (res == Image::SaveResult::NotFound) {
 		m_getAll404s++;
+		if (counters != nullptr) { counters->notFound++; }
 	} else if (res == Image::SaveResult::AlreadyExistsDisk) {
 		m_getAllExists++;
+		if (counters != nullptr) { counters->alreadyExists++; }
 	} else if (res == Image::SaveResult::Blacklisted || res == Image::SaveResult::AlreadyExistsMd5 || res == Image::SaveResult::AlreadyExistsDeletedMd5) {
 		m_getAllIgnored++;
+		if (counters != nullptr) { counters->ignored++; }
 	} else if (!diskError) {
 		m_getAllDownloaded++;
+		if (counters != nullptr) { counters->downloaded++; }
 	}
 
 	m_progressDialog->loadedImage(img->url(), res);
 
-	int siteId = download.siteId(m_groupBatchs);
 	getAllImageOk(download, siteId, diskError);
 }
 
@@ -1135,6 +1146,16 @@ void DownloadsTab::getAllFinished()
 			m_getAll = true;
 			m_progressDialog->clear();
 			m_getAllRemaining.clear();
+
+			// The retry counts these images again, so they leave their rows' failures here
+			for (const BatchDownloadImage &download : qAsConst(m_getAllFailed)) {
+				const int siteId = download.siteId(m_groupBatchs);
+				if (siteId >= 0) {
+					DownloadQueryGroup::Counters &counters = m_groupBatchs[getRowForSite(siteId)].counters;
+					counters.failed = qMax(0, counters.failed - 1);
+				}
+			}
+
 			m_getAllRemaining.append(m_getAllFailed);
 			m_getAllRemaining.append(m_getAllSkippedImages);
 			m_getAllImagesCount = m_getAllRemaining.count();
@@ -1187,10 +1208,10 @@ void DownloadsTab::getAllFinished()
 		// "done" once progressVal reaches total, which never happens for a batch whose images
 		// were all skipped (already on disk, blacklisted, ...) or that simply yielded fewer
 		// images than its declared total - leaving the row stuck on the "downloading" icon,
-		// because an entry in the model's m_statuses map suppresses the derived status.
-		m_groupBatchsModel->setStatus(m_groupBatchs[b], wasCancelled
-			? (m_groupBatchs[b].progressVal > 0 ? 1 : 0)
-			: 2);
+		// because any status but Unknown suppresses the derived one.
+		m_groupBatchsModel->setStatus(b, wasCancelled
+			? (m_groupBatchs[b].progressVal > 0 ? DownloadQueryGroup::Status::Downloading : DownloadQueryGroup::Status::Pending)
+			: DownloadQueryGroup::Status::Done);
 	}
 
 	// Final action

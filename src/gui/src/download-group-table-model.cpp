@@ -69,12 +69,40 @@ QVariant DownloadGroupTableModel::data(const QModelIndex &index, int role) const
 			QIcon(":/images/status/pending.png"),
 			QIcon(":/images/status/downloading.png"),
 			QIcon(":/images/status/ok.png"),
+			QIcon(":/images/status/error.png"),
 		};
-		int status = m_statuses.contains(row) ? m_statuses[row] : (download.progressVal <= 0 ? 0 : (download.progressVal >= download.total ? 2 : 1));
-		if (status >= s_iconMap.count()) {
-			return {};
+		using Status = DownloadQueryGroup::Status;
+		Status status = download.status;
+		if (status == Status::Unknown) {
+			status = download.progressVal <= 0
+				? Status::Pending
+				: (download.progressVal >= download.total ? Status::Done : Status::Downloading);
 		}
-		return s_iconMap[status];
+
+		// A finished row used to be a tick whether or not it lost images along the way
+		if (status == Status::Done && download.counters.failed > 0) {
+			return s_iconMap[3];
+		}
+
+		switch (status)
+		{
+			case Status::Pending: return s_iconMap[0];
+			case Status::Downloading: return s_iconMap[1];
+			case Status::Done: return s_iconMap[2];
+			default: return {};
+		}
+	}
+
+	// Breakdown behind the icon, so the row says how many rather than only whether
+	if (role == Qt::ToolTipRole && index.column() == 0) {
+		const DownloadQueryGroup::Counters &counters = download.counters;
+		QStringList parts;
+		if (counters.downloaded > 0) { parts.append(tr("%n downloaded", "", counters.downloaded)); }
+		if (counters.failed > 0) { parts.append(tr("%n failed", "", counters.failed)); }
+		if (counters.notFound > 0) { parts.append(tr("%n not found", "", counters.notFound)); }
+		if (counters.alreadyExists > 0) { parts.append(tr("%n already on disk", "", counters.alreadyExists)); }
+		if (counters.ignored > 0) { parts.append(tr("%n ignored", "", counters.ignored)); }
+		return parts.isEmpty() ? QVariant() : QVariant(parts.join(QStringLiteral("\n")));
 	}
 
 	if (role == Qt::InitialSortOrderRole) {
@@ -131,6 +159,8 @@ bool DownloadGroupTableModel::setData(const QModelIndex &index, const QVariant &
 
 	download.progressVal = 0;
 	download.progressFinished = false;
+	download.status = DownloadQueryGroup::Status::Unknown;
+	download.counters = {};
 
 	const QString val = value.toString();
 	bool isInt = false;
@@ -290,15 +320,14 @@ void DownloadGroupTableModel::cleared()
 	endResetModel();
 }
 
-bool DownloadGroupTableModel::setStatus(const DownloadQueryGroup &download, int status)
+bool DownloadGroupTableModel::setStatus(int row, DownloadQueryGroup::Status status)
 {
-	int position = m_downloads.indexOf(download);
-	if (position < 0) {
+	if (row < 0 || row >= m_downloads.count()) {
 		return false;
 	}
 
-	m_statuses[position] = status;
-	changed(position);
+	m_downloads[row].status = status;
+	changed(row);
 
 	return true;
 }
