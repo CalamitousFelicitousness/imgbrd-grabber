@@ -1,5 +1,7 @@
 #include "monitoring/monitoring-center.h"
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QPointer>
 #include <QSettings>
 #include <QTimer>
 #include <algorithm>
@@ -24,6 +26,12 @@ MonitoringCenter::MonitoringCenter(Profile *profile, DownloadQueue *downloadQueu
 	: QObject(parent), m_profile(profile), m_downloadQueue(downloadQueue)
 {
 	connect(m_downloadQueue, &DownloadQueue::finished, this, &MonitoringCenter::queueEmpty);
+
+	// QCoreApplication::exit() emits this before it makes every running and future event loop return
+	// at once, which would otherwise let a check in progress record pages that never loaded as empty
+	if (QCoreApplication::instance() != nullptr) {
+		connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &MonitoringCenter::stop);
+	}
 }
 
 void MonitoringCenter::start()
@@ -43,18 +51,29 @@ void MonitoringCenter::checkMonitor(Monitor &monitor, const Favorite &favorite)
 	}
 }
 
-bool MonitoringCenter::checkMonitor(Monitor &monitor, const SearchQuery &search, const QStringList &postFiltering)
+bool MonitoringCenter::checkMonitor(Monitor &monitor, SearchQuery search, QStringList postFiltering)
 {
+	// The logins and page loads below wait in nested event loops, which run UI events: the monitor
+	// lists can be edited (reallocating `monitor`) and the main window can close. So `monitor` is
+	// only read before the first wait, and looked up again before the results are recorded.
+	const Monitor *address = &monitor;
+	const QString searchKey = search.toString();
+	const QList<Site*> sites = monitor.sites();
 	const int delay = monitor.delay();
+	const QDateTime lastSuccess = monitor.lastSuccess();
+	const QDateTime previousCheck = monitor.lastCheck();
+	const bool download = monitor.download();
 	const QDateTime limit = QDateTime::currentDateTimeUtc().addSecs(-delay);
 
+	QPointer<MonitoringCenter> alive(this);
+
 	QStringList siteNames;
-	for (Site *site : monitor.sites()) {
+	for (Site *site : sites) {
 		siteNames.append(site->name());
 	}
 
 	emit statusChanged(monitor, MonitoringStatus::Checking);
-	log(QStringLiteral("Monitoring new images for '%1' on '%2'").arg(search.toString(), siteNames.join(", ")), Logger::Info);
+	log(QStringLiteral("Monitoring new images for '%1' on '%2'").arg(searchKey, siteNames.join(", ")), Logger::Info);
 
 	int count = 0;
 	int newImages = 0;
@@ -63,10 +82,25 @@ bool MonitoringCenter::checkMonitor(Monitor &monitor, const SearchQuery &search,
 	bool success = true;
 	const int perPage = m_profile->getSettings()->value("limit", 20).toInt();
 
-	for (Site *site : monitor.sites()) {
-		// Create a pack loader
+	// A stopped check returns without recording anything: an interrupted wait looks like an empty
+	// page, and recording it would move lastSuccess past posts that were never fetched
+	auto interrupted = [&]() {
+		if (!alive.isNull() && !alive->m_stop) {
+			return false;
+		}
+		log(QStringLiteral("Monitoring check for '%1' interrupted, the monitor is left unchanged").arg(searchKey), Logger::Info);
+		if (!alive.isNull()) {
+			if (Monitor *current = alive->findMonitor(address, searchKey, sites)) {
+				emit alive->statusChanged(*current, MonitoringStatus::Waiting);
+			}
+		}
+		return true;
+	};
+
+	for (Site *site : sites) {
+		// Create a pack loader, without a parent: the parent would delete this stack object if it went away during a wait
 		DownloadQueryGroup query(m_profile->getSettings(), search, 1, perPage, MONITOR_CHECK_TOTAL, postFiltering, site);
-		PackLoader loader(m_profile, query, perPage, this);
+		PackLoader loader(m_profile, query, perPage);
 
 		// A site that simply has no posts for this tag is NOT a failure - only a real page
 		// error is. Counting "no results" as failure froze lastSuccess permanently for any
@@ -82,19 +116,25 @@ bool MonitoringCenter::checkMonitor(Monitor &monitor, const SearchQuery &search,
 		});
 
 		const bool started = loader.start();
+		if (interrupted()) {
+			return false;
+		}
 
 		// Load all images
 		bool firstRun = true;
 		int countRun = 0;
 		int newImagesRun = 0;
-		while ((firstRun || monitor.download()) && loader.hasNext() && newImagesRun == countRun) {
+		while ((firstRun || download) && loader.hasNext() && newImagesRun == countRun) {
 			// Load the next page
 			QList<QSharedPointer<Image>> allImages = loader.next();
+			if (interrupted()) {
+				return false;
+			}
 			countRun += allImages.count();
 
 			// Filter out old images
 			for (const QSharedPointer<Image> &img : allImages) {
-				if (img->createdAt() > monitor.lastSuccess() && (delay <= 0 || img->createdAt() <= limit)) {
+				if (img->createdAt() > lastSuccess && (delay <= 0 || img->createdAt() <= limit)) {
 					newImagesList.append(img);
 					newImagesRun++;
 				}
@@ -105,7 +145,7 @@ bool MonitoringCenter::checkMonitor(Monitor &monitor, const SearchQuery &search,
 		newImages += newImagesRun;
 
 		if (countRun == 0) {
-			log(QStringLiteral("No results for monitor '%1' on site '%2'").arg(search.toString(), site->name()), Logger::Warning);
+			log(QStringLiteral("No results for monitor '%1' on site '%2'").arg(searchKey, site->name()), Logger::Warning);
 		}
 
 		const QString newState = countRun == 0 ? "empty" : (newImagesRun == 0 ? "finished" : "ok");
@@ -113,10 +153,17 @@ bool MonitoringCenter::checkMonitor(Monitor &monitor, const SearchQuery &search,
 		success = success && started && !siteError;
 	}
 
-	emit statusChanged(monitor, MonitoringStatus::Performing);
+	// Not found means it was edited or removed during the waits; its unchanged lastSuccess re-finds these posts
+	Monitor *target = findMonitor(address, searchKey, sites);
+	if (target == nullptr) {
+		log(QStringLiteral("Monitor '%1' changed while it was being checked, its results are discarded").arg(searchKey), Logger::Warning);
+		return false;
+	}
+
+	emit statusChanged(*target, MonitoringStatus::Performing);
 
 	// Send notification
-	if (monitor.notify() && newImages > 0) {
+	if (target->notify() && newImages > 0) {
 		QString msg;
 		if (count == 1) {
 			msg = tr("New images found for tag '%1' on '%2'");
@@ -125,46 +172,65 @@ bool MonitoringCenter::checkMonitor(Monitor &monitor, const SearchQuery &search,
 		} else {
 			msg = tr("More than %n new image(s) found for tag '%1' on '%2'", "", newImages);
 		}
-		emit notify(monitor, msg.arg(search.toString(), siteNames.join(", ")));
+		emit notify(*target, msg.arg(searchKey, siteNames.join(", ")));
 	}
 
 	// Add images to download queue
-	if (monitor.download() && newImages > 0) {
-		QString path = monitor.pathOverride();
+	QSharedPointer<PendingSuccess> pending;
+	if (target->download() && newImages > 0) {
+		QString path = target->pathOverride();
 		if (path.isEmpty()) {
 			path = m_profile->getSettings()->value("Save/path").toString();
 		}
-		QString filename = monitor.filenameOverride();
+		QString filename = target->filenameOverride();
 		if (filename.isEmpty()) {
 			filename = m_profile->getSettings()->value("Save/filename").toString();
 		}
 
+		// lastSuccess is the "what counts as new" watermark, so it waits for these downloads:
+		// moving it now would make an image that fails to download old before it ever arrived
+		if (success) {
+			pending.reset(new PendingSuccess { target, searchKey, sites, limit, previousCheck, {} });
+			m_pendingSuccesses.append(pending);
+		}
+
 		for (const QSharedPointer<Image> &img : newImagesList) {
 			auto *downloader = new ImageDownloader(m_profile, img, filename, path, 0, true, false, this);
-			if (!monitor.getBlacklisted()) {
+			if (!target->getBlacklisted()) {
 				downloader->setBlacklist(&m_profile->getBlacklist());
+			}
+			if (!pending.isNull()) {
+				const QDateTime createdAt = img->createdAt();
+				connect(downloader, &ImageDownloader::saved, this, [pending, createdAt](QSharedPointer<Image>, const QList<ImageSaveResult> &results) {
+					for (const ImageSaveResult &res : results) {
+						if (res.result == Image::SaveResult::NetworkError || res.result == Image::SaveResult::DetailsLoadError || res.result == Image::SaveResult::Error) {
+							pending->failures.append(createdAt);
+							return;
+						}
+					}
+				});
 			}
 			m_downloadQueue->add(DownloadQueue::Background, downloader);
 		}
 
-		log(QStringLiteral("Added %1 images to the download queue for monitor '%2' on '%3'").arg(QString::number(newImages), search.toString(), siteNames.join(", ")), Logger::Info);
+		log(QStringLiteral("Added %1 images to the download queue for monitor '%2' on '%3'").arg(QString::number(newImages), searchKey, siteNames.join(", ")), Logger::Info);
 		m_waitingForQueue = true;
 	}
 
 	// Update monitor
-	monitor.setLastCheck(limit);
-	if (success) {
-		monitor.setLastSuccess(limit);
+	target->setLastCheck(limit);
+	if (success && pending.isNull()) {
+		target->setLastSuccess(limit);
 	}
-	monitor.setLastState(state);
-	monitor.setCumulated(monitor.cumulated() + newImages, count != 1 && newImages < count);
+	target->setLastState(state);
+	target->setCumulated(target->cumulated() + newImages, count != 1 && newImages < count);
 	m_changed = true;
 
 	if (!m_waitingForQueue) {
 		sync();
 	}
 
-	emit statusChanged(monitor, MonitoringStatus::Waiting);
+	emit statusChanged(*target, MonitoringStatus::Waiting);
 
 	return newImages > 0;
 }
@@ -238,20 +304,42 @@ void MonitoringCenter::tick()
 		return a.next < b.next;
 	});
 
+	// A check waits in nested event loops, so after one the lists may have been edited (indices
+	// shifted or out of range, references dangling) and this object may be gone
+	QPointer<MonitoringCenter> alive(this);
+	auto monitorAt = [&favs, &monitors](const PendingMonitor &pm) -> Monitor * {
+		if (pm.favIndex < 0) {
+			return pm.monitorIndex < monitors.count() ? &monitors[pm.monitorIndex] : nullptr;
+		}
+		if (pm.favIndex >= favs.count()) {
+			return nullptr;
+		}
+		QList<Monitor> &favMonitors = favs[pm.favIndex].getMonitors();
+		return pm.monitorIndex < favMonitors.count() ? &favMonitors[pm.monitorIndex] : nullptr;
+	};
+
 	for (const PendingMonitor &pm : pending) {
-		Monitor &monitor = pm.favIndex < 0
-			? monitors[pm.monitorIndex]
-			: favs[pm.favIndex].getMonitors()[pm.monitorIndex];
+		Monitor *monitor = monitorAt(pm);
+		if (monitor == nullptr) {
+			continue;
+		}
 
 		// If this monitor's interval expired, we check it for updates
-		qint64 next = monitor.secsToNextCheck();
+		qint64 next = monitor->secsToNextCheck();
 		if (next <= 0) {
 			if (pm.favIndex < 0) {
-				checkMonitor(monitor, monitor.query(), monitor.postFilters());
+				checkMonitor(*monitor, monitor->query(), monitor->postFilters());
 			} else {
-				checkMonitor(monitor, favs[pm.favIndex]);
+				checkMonitor(*monitor, favs[pm.favIndex]);
 			}
-			next = monitor.secsToNextCheck();
+			if (alive.isNull() || m_stop) {
+				return;
+			}
+			monitor = monitorAt(pm);
+			if (monitor == nullptr) {
+				continue;
+			}
+			next = monitor->secsToNextCheck();
 		}
 
 		if (m_waitingForQueue) {
@@ -277,13 +365,94 @@ void MonitoringCenter::queueEmpty()
 {
 	if (m_waitingForQueue) {
 		m_waitingForQueue = false;
+		applyPendingSuccesses();
 		sync();
 		tick();
 	}
 }
 
+QDateTime MonitoringCenter::nextLastSuccess(const QDateTime &limit, const QList<QDateTime> &failures, const QDateTime &giveUpBefore)
+{
+	QDateTime oldest;
+	for (const QDateTime &createdAt : failures) {
+		const bool retry = createdAt.isValid() && (!giveUpBefore.isValid() || createdAt >= giveUpBefore);
+		if (retry && (!oldest.isValid() || createdAt < oldest)) {
+			oldest = createdAt;
+		}
+	}
+	return oldest.isValid() ? qMin(limit, oldest.addMSecs(-1)) : limit;
+}
+
+Monitor *MonitoringCenter::findMonitor(const Monitor *address, const QString &search, const QList<Site*> &sites) const
+{
+	// Address alone could be reused after the user edits the lists, so the search and sites must match too
+	auto matches = [&](const Monitor &monitor, const QString &monitorSearch) {
+		return &monitor == address && monitor.sites() == sites && monitorSearch == search;
+	};
+
+	for (Favorite &favorite : m_profile->getFavorites()) {
+		const QString search = SearchQuery(favorite.getName().split(' ', Qt::SkipEmptyParts)).toString();
+		for (Monitor &monitor : favorite.getMonitors()) {
+			if (matches(monitor, search)) {
+				return &monitor;
+			}
+		}
+	}
+	for (Monitor &monitor : m_profile->monitorManager()->monitors()) {
+		if (matches(monitor, monitor.query().toString())) {
+			return &monitor;
+		}
+	}
+	return nullptr;
+}
+
+void MonitoringCenter::applyPendingSuccesses()
+{
+	for (const QSharedPointer<PendingSuccess> &pending : qAsConst(m_pendingSuccesses)) {
+		// Not found means the monitor was edited or removed meanwhile; its old lastSuccess re-finds these images
+		Monitor *monitor = findMonitor(pending->monitor, pending->search, pending->sites);
+		if (monitor == nullptr) {
+			continue;
+		}
+
+		// Give up on a post only once an earlier check already tried it and it is past three days
+		// (three intervals for slow monitors), so a first attempt after Grabber was off is never dropped
+		const qint64 retryWindow = qMax<qint64>(3 * 24 * 60 * 60, 3 * static_cast<qint64>(monitor->interval()));
+		QDateTime giveUpBefore = pending->limit.addSecs(-retryWindow);
+		if (!pending->previousCheck.isValid()) {
+			giveUpBefore = QDateTime();
+		} else if (pending->previousCheck < giveUpBefore) {
+			giveUpBefore = pending->previousCheck;
+		}
+		const QDateTime lastSuccess = nextLastSuccess(pending->limit, pending->failures, giveUpBefore);
+
+		int retried = 0;
+		for (const QDateTime &createdAt : pending->failures) {
+			if (createdAt.isValid() && (!giveUpBefore.isValid() || createdAt >= giveUpBefore)) {
+				retried++;
+			}
+		}
+		if (retried > 0) {
+			log(QStringLiteral("%1 image(s) failed to download for monitor '%2', its next check will retry them").arg(retried).arg(pending->search), Logger::Warning);
+		}
+		if (retried < pending->failures.count()) {
+			log(QStringLiteral("%1 image(s) for monitor '%2' kept failing to download, giving up on them").arg(pending->failures.count() - retried).arg(pending->search), Logger::Warning);
+		}
+
+		if (lastSuccess > monitor->lastSuccess()) {
+			monitor->setLastSuccess(lastSuccess);
+			m_changed = true;
+		}
+	}
+	m_pendingSuccesses.clear();
+}
+
 void MonitoringCenter::stop()
 {
+	// Closing the window and aboutToQuit both stop it
+	if (m_stop) {
+		return;
+	}
 	m_stop = true;
 
 	log(QStringLiteral("Monitoring stopped"), Logger::Info);
