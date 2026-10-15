@@ -103,6 +103,8 @@ OptionsWindow::OptionsWindow(Profile *profile, ThemeLoader *themeLoader, QWidget
 	ui->checkSendUsageData->setChecked(settings->value("send_usage_data", true).toBool());
 	const QList<int> checkForUpdates { 0, 24 * 60 * 60, 7 * 24 * 60 * 60, 30 * 24 * 60 * 60, -1 };
 	ui->comboCheckForUpdates->setCurrentIndex(checkForUpdates.indexOf(settings->value("check_for_updates", 24 * 60 * 60).toInt()));
+	ui->labelCheckForUpdates->hide();
+	ui->comboCheckForUpdates->hide();
 	ui->lineTempPathOverride->setText(settings->value("tempPathOverride").toString());
 
 	ui->spinImagesPerPage->setValue(settings->value("limit", 20).toInt());

@@ -28,20 +28,9 @@ AboutWindow::AboutWindow(const QString &version, QWidget *parent)
 	ui->labelContributors->setText(ui->labelContributors->text().replace("{contributors}", contributors));
 
 	setFixedSize(600, heightForWidth(600));
-
-	connect(&m_updater, &ProgramUpdater::finished, this, &AboutWindow::finished);
-	m_updater.checkForUpdates();
 }
 
 AboutWindow::~AboutWindow()
 {
 	delete ui;
-}
-
-void AboutWindow::finished(const QString &newVersion, bool available)
-{
-	const QString msg = available ? tr("A new version is available: %1").arg(newVersion) : tr("Grabber is up to date");
-	ui->labelMessage->setText("<p style=\"font-size:8pt; font-style:italic; color:#808080;\">" + msg + "</p>");
-
-	setFixedSize(600, heightForWidth(600));
 }

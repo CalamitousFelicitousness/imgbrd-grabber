@@ -42,7 +42,6 @@
 #include "main-window.h"
 #include "models/page-api.h"
 #include "models/profile.h"
-#include "updater/update-dialog.h"
 #if !defined(USE_CLI) && defined(USE_BREAKPAD)
 	#include <QFileInfo>
 	#include "crashhandler/crashhandler.h"
@@ -164,27 +163,7 @@ int main(int argc, char *argv[])
 	Analytics::getInstance().startSession();
 	Analytics::getInstance().sendEvent("lifecycle", "start");
 
-	// Check for updates
-	const int cfuInterval = settings->value("check_for_updates", 24 * 60 * 60).toInt();
-	QDateTime lastCfu = settings->value("last_check_for_updates", QDateTime()).toDateTime();
-	if (cfuInterval >= 0 && (!lastCfu.isValid() || lastCfu.addSecs(cfuInterval) <= QDateTime::currentDateTime())) {
-		settings->setValue("last_check_for_updates", QDateTime::currentDateTime());
-
-		bool shouldQuit = false;
-		auto *updateDialog = new UpdateDialog(&shouldQuit);
-		auto *el = new QEventLoop();
-		QObject::connect(updateDialog, &UpdateDialog::noUpdateAvailable, el, &QEventLoop::quit);
-		QObject::connect(updateDialog, &UpdateDialog::rejected, el, &QEventLoop::quit);
-
-		updateDialog->checkForUpdates();
-		el->exec();
-		el->deleteLater();
-		updateDialog->deleteLater();
-
-		if (shouldQuit) {
-			return 0;
-		}
-	}
+	// No update check: the stock installer would replace this patched build
 
 	// Run the main window
 	auto *mainWindow = new MainWindow(&profile);

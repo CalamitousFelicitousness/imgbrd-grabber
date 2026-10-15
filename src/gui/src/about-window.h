@@ -4,7 +4,6 @@
 #include <QDialog>
 #include <QString>
 #include <QWidget>
-#include "updater/program-updater.h"
 
 
 namespace Ui
@@ -21,12 +20,8 @@ class AboutWindow : public QDialog
 		explicit AboutWindow(const QString &version, QWidget *parent = nullptr);
 		~AboutWindow() override;
 
-	public slots:
-		void finished(const QString &newVersion, bool available);
-
 	private:
 		Ui::AboutWindow *ui;
-		ProgramUpdater m_updater;
 };
 
 #endif // ABOUT_WINDOW_H
