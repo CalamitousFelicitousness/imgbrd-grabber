@@ -4,7 +4,12 @@ const tagTypeMap: Record<string, string> = {
 };
 
 function completeImage(img: IImage): IImage {
-    img.author = (img as any).owner;
+    // Only set `author` when the API actually returned an owner. The XML and HTML APIs
+    // (rule34.xxx) have no `owner` field, and assigning `undefined` makes the C++ host take a
+    // slow undefined-value path costing ~200ms per image (javascript-api.cpp:241).
+    if ((img as any).owner !== undefined) {
+        img.author = (img as any).owner;
+    }
 
     if ("tag_info" in img) {
         const tagInfo: Array<{ tag: string; type: string; count: number }> = img["tag_info"] as any;
