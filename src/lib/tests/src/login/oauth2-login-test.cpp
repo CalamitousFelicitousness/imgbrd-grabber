@@ -1,7 +1,10 @@
+#include <QDateTime>
+#include <QEventLoop>
 #include <QNetworkRequest>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryFile>
+#include <QTimer>
 #include "auth/oauth2-auth.h"
 #include "custom-network-access-manager.h"
 #include "logger.h"
@@ -108,5 +111,48 @@ TEST_CASE("OAuth2Login")
 		testLogin("client_credentials", "header", "404", Login::Result::Failure, QString(), site, &accessManager);
 		testLogin("client_credentials", "body", "tests/resources/oauth2/no_token_type.json", Login::Result::Failure, QString(), site, &accessManager);
 		testLogin("password", "body", "tests/resources/oauth2/wrong_token_type.json", Login::Result::Failure, QString(), site, &accessManager);
+	}
+
+	SECTION("RefreshTimeout")
+	{
+		auto spin = [](int ms) {
+			QEventLoop loop;
+			QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+			loop.exec();
+		};
+
+		MixedSettings *settings = site->settings();
+		settings->setValue("auth/consumerKey", "consumerKey");
+		settings->setValue("auth/consumerSecret", "consumerSecret");
+		settings->setValue("auth/accessToken", "expired_access_token");
+		settings->setValue("auth/refreshToken", "refresh_token");
+		settings->setValue("auth/accessTokenExpiration", QDateTime::currentDateTimeUtc().addSecs(-60));
+		settings->setValue("auth/refreshTimeout", 500);
+
+		OAuth2Auth auth("oauth2", "refresh_token", "/token", "/authorization", "/redirect", "", "header");
+		OAuth2Login login(&auth, site, &accessManager, settings);
+
+		// An expired access token makes the next request start a refresh in the background, which
+		// the server here accepts and never answers.
+		CustomNetworkAccessManager::NextFiles.enqueue("hang");
+		QNetworkRequest first;
+		login.complementRequest(&first);
+		spin(100);
+		REQUIRE(CustomNetworkAccessManager::NextFiles.isEmpty());
+
+		// While that refresh is outstanding, further requests must not start one of their own
+		CustomNetworkAccessManager::NextFiles.enqueue("hang");
+		QNetworkRequest second;
+		login.complementRequest(&second);
+		spin(100);
+		REQUIRE(CustomNetworkAccessManager::NextFiles.count() == 1);
+
+		// Once the refresh times out, the site has to become usable again. Without the timer this
+		// queue stays untouched for the lifetime of the process.
+		spin(600);
+		QNetworkRequest third;
+		login.complementRequest(&third);
+		spin(100);
+		REQUIRE(CustomNetworkAccessManager::NextFiles.isEmpty());
 	}
 }

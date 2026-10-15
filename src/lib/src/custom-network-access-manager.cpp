@@ -27,6 +27,12 @@ QNetworkReply *CustomNetworkAccessManager::makeErrorReply(const QNetworkRequest 
 		reply->setUrl(request.url());
 	}
 
+	// A request that is accepted and then never answered. QCustomNetworkReply only schedules
+	// finished() from setContent(), so returning before that leaves the reply outstanding.
+	if (code == QLatin1String("hang")) {
+		return reply;
+	}
+
 	if (code == QLatin1String("404")) {
 		reply->setHttpStatusCode(404, "Not Found");
 		reply->setNetworkError(QNetworkReply::ContentNotFoundError, QStringLiteral("Not Found"));
@@ -60,7 +66,7 @@ QNetworkReply *CustomNetworkAccessManager::makeTestReply(const QNetworkRequest &
 	}
 
 	// Error testing
-	if (path == QLatin1String("404") || path == QLatin1String("500") || path == QLatin1String("cookie") || path == QLatin1String("redirect")) {
+	if (path == QLatin1String("404") || path == QLatin1String("500") || path == QLatin1String("cookie") || path == QLatin1String("redirect") || path == QLatin1String("hang")) {
 		return makeErrorReply(request, path);
 	}
 

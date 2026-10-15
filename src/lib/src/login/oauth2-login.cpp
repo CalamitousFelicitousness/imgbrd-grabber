@@ -29,6 +29,12 @@ OAuth2Login::OAuth2Login(OAuth2Auth *auth, Site *site, NetworkManager *manager, 
 	m_refreshToken = m_settings->value("auth/refreshToken").toString();
 	m_accessTokenExpiration = m_settings->value("auth/accessTokenExpiration").toDateTime();
 	m_refreshTokenExpiration = m_settings->value("auth/refreshTokenExpiration").toDateTime();
+
+	// A refresh whose reply never finishes would leave m_refreshing latched, and every later
+	// request for this site returns silently at the guard in refresh(). Nothing else clears it.
+	m_refreshTimer.setSingleShot(true);
+	m_refreshTimer.setInterval(m_settings->value("auth/refreshTimeout", 30000).toInt());
+	connect(&m_refreshTimer, &QTimer::timeout, this, &OAuth2Login::refreshTimeout);
 }
 
 bool OAuth2Login::isTestable() const
@@ -368,15 +374,34 @@ void OAuth2Login::refresh(bool login)
 	// Post request and wait for a reply
 	m_refreshReply = m_manager->post(request, data);
 	connect(m_refreshReply, &NetworkReply::finished, this, &OAuth2Login::refreshFinished);
+	m_refreshTimer.start();
+}
+
+void OAuth2Login::refreshTimeout()
+{
+	log(QStringLiteral("[%1] OAuth2 token refresh got no reply after %2s, aborting it so later requests can retry").arg(m_site->url(), QString::number(m_refreshTimer.interval() / 1000)), Logger::Warning);
+
+	// Release the latch here rather than relying on the abort below: NetworkReply::abort() returns
+	// without emitting finished() when the reply already stopped running, which is the same dead
+	// end this timer exists to break. Aborting still lets NetworkManager advance its queue.
+	m_refreshing = false;
+	if (m_refreshReply != nullptr) {
+		m_refreshReply->abort();
+	}
 }
 
 void OAuth2Login::refreshFinished()
 {
+	m_refreshTimer.stop();
+
 	const bool ok = readResponse(m_refreshReply);
 	m_refreshing = false;
 
 	// If we're not doing a refresh triggered by a login flow, we can stop here and not emit anything
 	if (!m_refreshForLogin) {
+		if (!ok) {
+			log(QStringLiteral("[%1] Background OAuth2 token refresh failed, requests will keep using the expired token").arg(m_site->url()), Logger::Warning);
+		}
 		return;
 	}
 

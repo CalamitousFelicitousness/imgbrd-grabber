@@ -5,6 +5,7 @@
 #include <QList>
 #include <QMap>
 #include <QString>
+#include <QTimer>
 #include "login/login.h"
 
 using QStrP = QPair<QString, QString>;
@@ -32,6 +33,7 @@ class OAuth2Login : public Login
 	protected slots:
 		void loginFinished();
 		void refreshFinished();
+		void refreshTimeout();
 		void basicRefresh();
 
 	protected:
@@ -54,6 +56,7 @@ class OAuth2Login : public Login
 		QString m_refreshToken;
 		QDateTime m_accessTokenExpiration;
 		QDateTime m_refreshTokenExpiration;
+		QTimer m_refreshTimer;
 		bool m_refreshing = false;
 		bool m_refreshForLogin = false;
 };
