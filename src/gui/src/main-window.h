@@ -110,6 +110,7 @@ class MainWindow : public QMainWindow
 
 	protected:
 		void initialLoginsDone();
+		void closeEventConfirm(QCloseEvent *event);
 
 	private:
 		Profile *m_profile;
@@ -139,6 +140,7 @@ class MainWindow : public QMainWindow
 		// System tray
 		QSystemTrayIcon *m_trayIcon;
 		bool m_closeFromTray = false;
+		bool m_closeConfirmed = false; // A deferred close does not ask again
 		MonitoringCenter *m_monitoringCenter;
 };
 

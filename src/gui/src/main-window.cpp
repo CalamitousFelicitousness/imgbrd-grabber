@@ -11,6 +11,7 @@
 #include <QNetworkProxy>
 #include <QShortcut>
 #include <QStringList>
+#include <QThread>
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 4, 0))
 	#include <QSysInfo>
 #endif
@@ -765,6 +766,61 @@ void MainWindow::changeEvent(QEvent *event)
 // Save tabs and settings on close
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+	if (!m_closeConfirmed) {
+		closeEventConfirm(event);
+		if (!event->isAccepted()) {
+			return;
+		}
+		m_closeConfirmed = true;
+		m_monitoringCenter->stop();
+	}
+
+	// Monitor checks, logins and exiftool calls wait in nested event loops. A close accepted inside
+	// one deletes this window (WA_DeleteOnClose), with the monitoring center and download queue,
+	// under code that resumes when the wait ends, so the close is retried from the main loop.
+	if (QThread::currentThread()->loopLevel() > 1) {
+		hide();
+		if (m_trayIcon != nullptr && m_trayIcon->isVisible()) {
+			m_trayIcon->hide();
+		}
+		QTimer::singleShot(200, this, &MainWindow::close);
+		event->ignore();
+		return;
+	}
+
+	// End analytics session
+	Analytics::getInstance().endSession();
+	Analytics::getInstance().startSending();
+
+	log(QStringLiteral("Saving..."), Logger::Debug);
+		m_downloadsTab->saveLinkList(m_profile->getPath() + "/restore.igl");
+		saveTabs(m_profile->getPath() + "/tabs.json");
+		m_settings->setValue("state", saveState());
+		m_settings->setValue("geometry", saveGeometry());
+		m_settings->setValue("crashed", false);
+		m_settings->sync();
+		QFile(m_settings->fileName()).copy(m_profile->getPath() + "/old/settings."+QString(VERSION)+".ini");
+		m_profile->sync();
+	DONE();
+	m_loaded = false;
+
+	// Ensore the tray icon is hidden quickly on close
+	if (m_trayIcon != nullptr && m_trayIcon->isVisible()) {
+		m_trayIcon->hide();
+	}
+
+	// Qt 6 only quits on the last window closing if that window was visible, which a window
+	// closed to the tray (or hidden above) is not
+	QMetaObject::invokeMethod(qApp, &QCoreApplication::quit, Qt::QueuedConnection);
+
+	event->accept();
+}
+
+// Close-to-tray and the "are you sure" prompt; leaves the event ignored when the window stays open
+void MainWindow::closeEventConfirm(QCloseEvent *event)
+{
+	event->accept();
+
 	// Close to tray
 	bool tray = m_settings->value("Monitoring/enableTray", false).toBool();
 	bool closeToTray = m_settings->value("Monitoring/closeToTray", false).toBool();
@@ -802,29 +858,6 @@ void MainWindow::closeEvent(QCloseEvent *event)
 			m_settings->setValue("confirm_close", false);
 		}
 	}
-
-	// End analytics session
-	Analytics::getInstance().endSession();
-	Analytics::getInstance().startSending();
-
-	log(QStringLiteral("Saving..."), Logger::Debug);
-		m_downloadsTab->saveLinkList(m_profile->getPath() + "/restore.igl");
-		saveTabs(m_profile->getPath() + "/tabs.json");
-		m_settings->setValue("state", saveState());
-		m_settings->setValue("geometry", saveGeometry());
-		m_settings->setValue("crashed", false);
-		m_settings->sync();
-		QFile(m_settings->fileName()).copy(m_profile->getPath() + "/old/settings."+QString(VERSION)+".ini");
-		m_profile->sync();
-	DONE();
-	m_loaded = false;
-
-	// Ensore the tray icon is hidden quickly on close
-	if (m_trayIcon != nullptr && m_trayIcon->isVisible()) {
-		m_trayIcon->hide();
-	}
-
-	event->accept();
 }
 
 void MainWindow::options()
