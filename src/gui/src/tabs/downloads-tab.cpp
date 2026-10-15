@@ -774,23 +774,27 @@ void DownloadsTab::getAllFinishedPage(Page *page)
  */
 void DownloadsTab::getAllFinishedImages(const QList<QSharedPointer<Image>> &images)
 {
-	int row = -1;
-	for (auto it = m_batchPending.constBegin(); it != m_batchPending.constEnd(); ++it) {
-		if (it.value() == m_currentPackLoader->query()) {
-			row = it.key();
-			break;
+	// Resuming a paused run passes an empty list, and by then there may be no pack loader left
+	// (all pages loaded, or a retry pass); only images from a pack loader need its batch
+	if (!images.isEmpty()) {
+		int row = -1;
+		for (auto it = m_batchPending.constBegin(); it != m_batchPending.constEnd(); ++it) {
+			if (it.value() == m_currentPackLoader->query()) {
+				row = it.key();
+				break;
+			}
 		}
-	}
-	if (row < 0) {
-		log("Images received from unknown batch", Logger::Error);
-		return;
-	}
+		if (row < 0) {
+			log("Images received from unknown batch", Logger::Error);
+			return;
+		}
 
-	for (const auto &img : images) {
-		BatchDownloadImage d;
-		d.image = img;
-		d.queryGroup = &m_batchPending[row];
-		m_getAllRemaining.append(d);
+		for (const auto &img : images) {
+			BatchDownloadImage d;
+			d.image = img;
+			d.queryGroup = &m_batchPending[row];
+			m_getAllRemaining.append(d);
+		}
 	}
 
 	// Ignore for aborted/resumed calls (partial packs)
