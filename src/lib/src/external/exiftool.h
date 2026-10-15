@@ -3,9 +3,13 @@
 
 #include <QMap>
 #include <QObject>
-#include <QProcess>
 #include <QString>
+#include <QStringList>
+#include <QThread>
+#include <functional>
 
+
+class ExiftoolWorker;
 
 class Exiftool : public QObject
 {
@@ -22,8 +26,10 @@ class Exiftool : public QObject
 		Q_ENUM(SidecarFile)
 
 		explicit Exiftool(QObject *parent = nullptr);
+		~Exiftool() override;
 
 		static QString version(int msecs = 30000);
+		static bool isOnRemoteVolume(const QString &path);
 
 	public slots:
 		bool start(int msecs = 30000);
@@ -31,11 +37,12 @@ class Exiftool : public QObject
 		bool execute(const QString &file, const QString &command, int msecs = 30000);
 		bool stop(int msecs = 30000);
 
-	protected slots:
-		void onError();
-
 	private:
-		QProcess m_process;
+		// Runs `work` on the worker thread while the caller keeps its event loop spinning
+		bool runOnWorker(const std::function<bool()> &work);
+
+		QThread m_thread;
+		ExiftoolWorker *m_worker;
 };
 
 #endif // EXIFTOOL_H
