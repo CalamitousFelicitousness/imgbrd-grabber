@@ -348,4 +348,26 @@ TEST_CASE("ImageDownloader")
 
 		assertDownload(profile, img, &downloader, expected, true);
 	}
+
+	SECTION("Fix extension from header for a .jpeg URL saved as .jpg")
+	{
+		profile->getSettings()->setValue("Save/headerDetection", true);
+
+		QMap<QString, QString> details;
+		details["md5"] = "1bc29b36f623ba82aaf6724fd3b16718";
+		details["ext"] = "jpeg";
+		details["id"] = "7331";
+		details["file_url"] = "https://test.com/img/oldfilename.jpeg";
+		details["page_url"] = "/posts/7331";
+		details["tags"] = "tag1 tag2 tag3";
+		auto img = ImageFactory::build(site, details, profile);
+
+		CustomNetworkAccessManager::NextFiles.enqueue("tests/resources/image_1x1.png");
+		ImageDownloader downloader(profile, img, "out.jpg", "tests/resources/tmp", 1, false, false, nullptr, false, false);
+
+		QList<ImageSaveResult> expected;
+		expected.append({ QDir::toNativeSeparators("tests/resources/tmp/out.png"), Image::Size::Full, Image::SaveResult::Saved });
+
+		assertDownload(profile, img, &downloader, expected, true);
+	}
 }

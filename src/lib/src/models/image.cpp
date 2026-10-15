@@ -796,6 +796,9 @@ QString Image::postSaving(const QString &originalPath, Size size, bool addMd5, b
 	}
 
 	QString ext = extension();
+	if (ext == QStringLiteral("jpeg") && getExtension(path) == QStringLiteral("jpg")) {
+		ext = QStringLiteral("jpg"); // Save/noJpeg
+	}
 
 	// Keep original date
 	if (m_settings->value("Save/keepDate", true).toBool()) {

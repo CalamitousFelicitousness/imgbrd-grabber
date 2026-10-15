@@ -137,6 +137,8 @@ TEST_CASE("Functions")
 		REQUIRE(getExtensionFromHeader(readFile("tests/resources/minimal/png.png")) == QString("png"));
 		REQUIRE(getExtensionFromHeader(readFile("tests/resources/minimal/jpg.jpg")) == QString("jpg"));
 		REQUIRE(getExtensionFromHeader(readFile("tests/resources/minimal/bmp.bmp")) == QString("bmp"));
+		REQUIRE(getExtensionFromHeader(readFile("tests/resources/minimal/webp.webp")) == QString("webp"));
+		REQUIRE(getExtensionFromHeader(readFile("tests/resources/minimal/avif.avif")) == QString("avif"));
 		REQUIRE(getExtensionFromHeader(readFile("tests/resources/minimal/webm.webm")) == QString("webm"));
 		REQUIRE(getExtensionFromHeader(readFile("tests/resources/minimal/mp4.mp4")) == QString("mp4"));
 		REQUIRE(getExtensionFromHeader(readFile("tests/resources/minimal/swf.swf")) == QString("swf"));

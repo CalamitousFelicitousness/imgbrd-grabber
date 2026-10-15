@@ -876,6 +876,16 @@ QString getExtensionFromHeader(const QByteArray &data12)
 		return QStringLiteral("bmp");
 	}
 
+	// WEBP
+	if (data4 == "RIFF" && data12.mid(8, 4) == "WEBP") {
+		return QStringLiteral("webp");
+	}
+
+	// AVIF
+	if (data48 == "ftypavif" || data48 == "ftypavis") {
+		return QStringLiteral("avif");
+	}
+
 	// WEBM
 	if (data4 == "\032\105\337\243") {
 		return QStringLiteral("webm");
