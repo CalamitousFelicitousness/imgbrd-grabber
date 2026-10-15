@@ -3,6 +3,29 @@ const tagTypeMap: Record<string, string> = {
     "metadata": "meta",
 };
 
+/**
+ * Danbooru and Sankaku write OR as "~a ~b", but Gelbooru-style sites need "( a ~ b )".
+ * Given "~a ~b" verbatim, rule34 reads each "~tag" as a literal tag that does not exist and
+ * returns 0 posts - silently, no error - so a tab searching all three sites can never share
+ * one query string. Translating here means "~a ~b" works everywhere.
+ *
+ * Verified against the live API 2026-08-13: groups are not width-limited here. A 5-wide
+ * "( a ~ b ~ c ~ d ~ e )" unions correctly. The real ceiling is Danbooru's max-tags-per-search,
+ * which counts each "~tag" separately: 2 for Member, 6 for Gold, unlimited for Platinum.
+ */
+function translateOrTags(search: string): string {
+    const matches = search.match(/(^|\s)~\S+/g);
+    if (!matches) {
+        return search;
+    }
+    const terms = matches.map((m) => m.replace(/^\s+/, "").substring(1));
+    const rest = search.replace(/(^|\s)~\S+/g, " ").replace(/\s+/g, " ").trim();
+    // A lone "~tag" means just that tag on Danbooru, so drop the marker rather than
+    // emitting a one-element OR group.
+    const group = terms.length > 1 ? "( " + terms.join(" ~ ") + " )" : terms[0];
+    return rest ? group + " " + rest : group;
+}
+
 function completeImage(img: IImage): IImage {
     // Only set `author` when the API actually returned an owner. The XML and HTML APIs
     // (rule34.xxx) have no `owner` field, and assigning `undefined` makes the C++ host take a
@@ -81,7 +104,7 @@ export const source: ISource = {
             search: {
                 url: (query: ISearchQuery, opts: IUrlOptions): string | IError => {
                     const page: number = query.page - 1;
-                    const search: string = query.search.replace(/(^| )order:/gi, "$1sort:");
+                    const search: string = translateOrTags(query.search.replace(/(^| )order:/gi, "$1sort:"));
                     const fav = search.match(/(?:^| )fav:(\d+)(?:$| )/);
                     if (fav) {
                         return { error: "XML API cannot search favorites" };
@@ -132,7 +155,7 @@ export const source: ISource = {
             search: {
                 url: (query: ISearchQuery, opts: IUrlOptions): string | IError => {
                     const page: number = query.page - 1;
-                    const search: string = query.search.replace(/(^| )order:/gi, "$1sort:");
+                    const search: string = translateOrTags(query.search.replace(/(^| )order:/gi, "$1sort:"));
                     const fav = search.match(/(?:^| )fav:(\d+)(?:$| )/);
                     if (fav) {
                         return { error: "JSON API cannot search favorites" };
@@ -186,7 +209,7 @@ export const source: ISource = {
                 url: (query: ISearchQuery, opts: IUrlOptions, previous: IPreviousSearch | undefined): string | IError => {
                     try {
                         const baseUrl = opts.baseUrl.replace("//api.", "//");
-                        const search: string = query.search.replace(/(^| )order:/gi, "$1sort:");
+                        const search: string = translateOrTags(query.search.replace(/(^| )order:/gi, "$1sort:"));
                         const fav = search.match(/(?:^| )fav:(\d+)(?:$| )/);
                         if (fav) {
                             const pagePart = Grabber.pageUrl(query.page, previous, 20000, "&pid={page}", "&pid={page}", " id:<{min}&p=1", (p: number) => (p - 1) * 50);
