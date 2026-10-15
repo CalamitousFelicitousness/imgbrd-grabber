@@ -44,6 +44,7 @@ QDateTime qDateTimeFromString(const QString &str);
 QString savePath(const QString &file = "", bool exists = false, bool writable = true);
 int levenshtein(QString, QString);
 QString stripTags(QString);
+QString redactCredentials(QString str);
 QString getUnit(double *size);
 QString formatFilesize(double size);
 qint64 parseFileSize(const QString &str);

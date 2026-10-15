@@ -563,6 +563,17 @@ QString stripTags(QString str)
 }
 
 /**
+ * Masks the values of the URL parameters sources put credentials in, keeping their names.
+ */
+QString redactCredentials(QString str)
+{
+	static const QRegularExpression credential(
+		QStringLiteral("([?&](?:api_key|apikey|appkey|key|password|pass|password_hash|pass_hash|shm_session|access_token|refresh_token|client_secret)=)[^&#\\s\"'`<>]+"),
+		QRegularExpression::CaseInsensitiveOption);
+	return str.replace(credential, QStringLiteral("\\1***"));
+}
+
+/**
  * Shut down computer after a certain period of time.
  * @param	timeout		Time before shutdown in seconds.
  */

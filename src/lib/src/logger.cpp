@@ -137,7 +137,7 @@ void Logger::setupMessageOutput(bool log)
  * Append text in the log in a new line.
  * @param message The message to append.
  */
-void Logger::log(const QString &message, LogLevel level)
+void Logger::log(const QString &rawMessage, LogLevel level)
 {
 	static QTextStream qStdOut(stdout);
 	static QTextStream qStdErr(stderr);
@@ -145,6 +145,9 @@ void Logger::log(const QString &message, LogLevel level)
 	if (level < m_level) {
 		return;
 	}
+
+	// Every request URL is logged, and sources put API keys and passwords in them
+	const QString message = redactCredentials(rawMessage);
 
 	// Fallback to "main.log" if no log file is open
 	if (!m_logFile.isOpen()) {

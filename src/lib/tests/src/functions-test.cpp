@@ -185,6 +185,15 @@ TEST_CASE("Functions")
 		REQUIRE(!isVariantEmpty(QRect(1, 2, 3, 4)));
 	}
 
+	SECTION("RedactCredentials")
+	{
+		REQUIRE(redactCredentials("Loading `https://rule34.xxx/index.php?page=post&tags=a&user_id=123&api_key=0123abcd`") == QString("Loading `https://rule34.xxx/index.php?page=post&tags=a&user_id=123&api_key=***`"));
+		REQUIRE(redactCredentials("https://danbooru.donmai.us/posts?limit=100&login=me&api_key=SecretKey1&page=1") == QString("https://danbooru.donmai.us/posts?limit=100&login=me&api_key=***&page=1"));
+		REQUIRE(redactCredentials("https://e.com/?password_hash=abc&pass=x&KEY=y&shm_session=z#top") == QString("https://e.com/?password_hash=***&pass=***&KEY=***&shm_session=***#top"));
+		REQUIRE(redactCredentials("https://e.com/?monkey=1&passive=2&api_key=") == QString("https://e.com/?monkey=1&passive=2&api_key="));
+		REQUIRE(redactCredentials("No URL here, key=value") == QString("No URL here, key=value"));
+	}
+
 	SECTION("GetUnit")
 	{
 		QStringList units = FILESIZE_UNITS;
