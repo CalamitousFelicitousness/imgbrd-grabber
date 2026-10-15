@@ -160,6 +160,7 @@ void Site::loadConfig()
 	m_manager->setInterval(QueryType::Thumbnail, setting("download/throttle_thumbnail", 0).toInt() * 1000);
 	m_manager->setInterval(QueryType::Details, setting("download/throttle_details", 1).toInt() * 1000);
 	m_manager->setInterval(QueryType::Retry, setting("download/throttle_retry", 60).toInt() * 1000);
+	m_manager->setTransferTimeout(setting("download/transfer_timeout", 30).toInt() * 1000);
 
 	// Generate the User-Agent
 	m_userAgent = m_settings->value("Headers/User-Agent").toString();

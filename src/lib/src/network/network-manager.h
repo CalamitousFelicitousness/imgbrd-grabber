@@ -28,6 +28,7 @@ class NetworkManager : public QObject
 		void setMaxConcurrency(int maxConcurrency);
 		int interval(int key) const;
 		void setInterval(int key, int msInterval);
+		void setTransferTimeout(int msTimeout);
 
 		void setCache(QAbstractNetworkCache *cache);
 		QNetworkCookieJar *cookieJar() const;
@@ -48,6 +49,7 @@ class NetworkManager : public QObject
 		CustomNetworkAccessManager *m_manager;
 		ThrottlingManager m_throttlingManager;
 		int m_maxConcurrency = 6;
+		int m_transferTimeout = 0;
 		QQueue<QPair<int, QPointer<NetworkReply>>> m_queue;
 		QAtomicInt m_activeQueries;
 };

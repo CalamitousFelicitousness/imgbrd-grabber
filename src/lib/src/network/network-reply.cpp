@@ -1,6 +1,8 @@
 #include "network-reply.h"
+#include <chrono>
 #include <utility>
 #include "custom-network-access-manager.h"
+#include "logger.h"
 
 
 NetworkReply::NetworkReply(QNetworkRequest request, CustomNetworkAccessManager *manager, QObject *parent)
@@ -51,7 +53,9 @@ QVariant NetworkReply::attribute(QNetworkRequest::Attribute code) const
 
 QByteArray NetworkReply::readAll()
 {
-	if (m_reply != nullptr) {
+	// A reply Qt aborted is closed before it emits finished(), and FileDownloader still drains it
+	// there. Reading a closed QIODevice only warns and returns nothing.
+	if (m_reply != nullptr && m_reply->isOpen()) {
 		return m_reply->readAll();
 	}
 	return {};
@@ -124,8 +128,21 @@ void NetworkReply::start(int msDelay)
 	timer.start();
 }
 
+void NetworkReply::setTransferTimeout(int msTimeout)
+{
+	m_transferTimeout = msTimeout;
+}
+
 void NetworkReply::startNow()
 {
+	// Qt waits forever by default, so a connection dropped without a close leaves a reply that
+	// never emits finished(). NetworkManager only advances its queue on that signal, so a few of
+	// them permanently deadlock every later request for the site. The clock resets on each chunk
+	// received, so this bounds silence rather than total transfer time.
+	if (m_transferTimeout > 0) {
+		m_request.setTransferTimeout(std::chrono::milliseconds(m_transferTimeout));
+	}
+
 	if (m_post) {
 		m_reply = m_manager->post(m_request, m_data);
 	} else {
@@ -135,9 +152,20 @@ void NetworkReply::startNow()
 	connect(m_reply, &QNetworkReply::readyRead, this, &NetworkReply::readyRead);
 	connect(m_reply, &QNetworkReply::downloadProgress, this, &NetworkReply::downloadProgress);
 	connect(m_reply, &QNetworkReply::redirected, this, &NetworkReply::redirected);
-	connect(m_reply, &QNetworkReply::finished, this, &NetworkReply::finished);
+	connect(m_reply, &QNetworkReply::finished, this, &NetworkReply::replyFinished);
 
 	m_reply->setParent(this);
+}
+
+void NetworkReply::replyFinished()
+{
+	// Qt aborts an expired transfer timeout with TimeoutError, not the OperationCanceledError
+	// that abort() gives (qnetworkreplyhttpimpl.cpp `_q_transferTimedOut`).
+	if (m_reply != nullptr && m_reply->error() == QNetworkReply::TimeoutError) {
+		log(QStringLiteral("No data received for %1s, timed out `%2`").arg(QString::number(m_transferTimeout / 1000), m_reply->url().toString()), Logger::Warning);
+	}
+
+	emit finished();
 }
 
 void NetworkReply::abort()

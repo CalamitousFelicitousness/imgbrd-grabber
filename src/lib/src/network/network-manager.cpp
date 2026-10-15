@@ -36,6 +36,11 @@ void NetworkManager::setInterval(int key, int msInterval)
 	m_throttlingManager.setInterval(key, msInterval);
 }
 
+void NetworkManager::setTransferTimeout(int msTimeout)
+{
+	m_transferTimeout = msTimeout;
+}
+
 
 void NetworkManager::setCache(QAbstractNetworkCache *cache)
 {
@@ -61,6 +66,7 @@ void NetworkManager::setIgnoreSslErrors(bool ignore)
 NetworkReply *NetworkManager::get(QNetworkRequest request, int type)
 {
 	auto *reply = new NetworkReply(std::move(request), m_manager, this);
+	reply->setTransferTimeout(m_transferTimeout);
 	append(reply, type);
 
 	return reply;
@@ -69,6 +75,7 @@ NetworkReply *NetworkManager::get(QNetworkRequest request, int type)
 NetworkReply *NetworkManager::post(QNetworkRequest request, QByteArray data, int type)
 {
 	auto *reply = new NetworkReply(std::move(request), std::move(data), m_manager, this);
+	reply->setTransferTimeout(m_transferTimeout);
 	append(reply, type);
 
 	return reply;

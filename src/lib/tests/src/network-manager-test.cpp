@@ -1,7 +1,10 @@
 #include <QEventLoop>
+#include <QHostAddress>
 #include <QNetworkRequest>
+#include <QTcpServer>
 #include <QUrl>
 #include "catch.h"
+#include "logger.h"
 #include "network/network-manager.h"
 #include "network/network-reply.h"
 #include "functions.h"
@@ -106,6 +109,68 @@ TEST_CASE("NetworkManager", "[.][network]")
 
 		REQUIRE(received);
 		REQUIRE(manager.activeQueries() == 0);
+	}
+
+	/**
+	 * Start a request against a server that accepts the connection and never answers.
+	 * Wait for 3s with a 1s transfer timeout.
+	 * The request should have been aborted and the active query count reset, so that later
+	 * requests still get dispatched.
+	 */
+	SECTION("Transfer timeout on a silent server")
+	{
+		QTcpServer blackhole;
+		REQUIRE(blackhole.listen(QHostAddress::LocalHost, 0));
+
+		NetworkManager manager;
+		manager.setMaxConcurrency(1);
+		manager.setTransferTimeout(1000);
+
+		QNetworkRequest request(QUrl(QStringLiteral("http://127.0.0.1:%1/blackhole").arg(blackhole.serverPort())));
+
+		QStringList warnings;
+		QObject::connect(&Logger::getInstance(), &Logger::newLog, [&warnings](const QString &msg) {
+			if (msg.contains(QLatin1String("No data received for"))) {
+				warnings.append(msg);
+			}
+		});
+
+		NetworkReply *reply = manager.get(request);
+
+		bool received = false;
+		QObject::connect(reply, &NetworkReply::finished, [&]() {
+			received = true;
+		});
+
+		QEventLoop loop;
+		QTimer::singleShot(3000, &loop, &QEventLoop::quit);
+		loop.exec();
+
+		REQUIRE(received);
+		REQUIRE(manager.activeQueries() == 0);
+
+		// Qt aborts an expired transfer timeout with TimeoutError, not the OperationCanceledError
+		// that abort() gives. NetworkReply::replyFinished() keys its warning off this.
+		REQUIRE(reply->error() == QNetworkReply::TimeoutError);
+
+		// Qt closes the reply before emitting finished(), and FileDownloader still drains it there
+		REQUIRE(reply->readAll().isEmpty());
+
+		// The whole point of the timeout is not having to guess at it later in the log
+		REQUIRE(warnings.size() == 1);
+
+		// The queue has to keep moving once the dead reply is out of the way
+		NetworkReply *next = manager.get(request);
+		bool nextReceived = false;
+		QObject::connect(next, &NetworkReply::finished, [&]() {
+			nextReceived = true;
+		});
+
+		QEventLoop loop2;
+		QTimer::singleShot(3000, &loop2, &QEventLoop::quit);
+		loop2.exec();
+
+		REQUIRE(nextReceived);
 	}
 
 	setTestModeEnabled(true);

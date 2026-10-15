@@ -32,6 +32,7 @@ class NetworkReply : public QObject
 		QNetworkReply *networkReply() const;
 		QByteArray rawHeader(const QByteArray &headerName) const;
 		bool isRunning() const;
+		void setTransferTimeout(int msTimeout);
 
 	public slots:
 		void start(int msDelay = 0);
@@ -40,6 +41,7 @@ class NetworkReply : public QObject
 	protected slots:
 		void init();
 		void startNow();
+		void replyFinished();
 
 	signals:
 		void readyRead();
@@ -51,6 +53,7 @@ class NetworkReply : public QObject
 		QNetworkRequest m_request;
 		QByteArray m_data;
 		CustomNetworkAccessManager *m_manager;
+		int m_transferTimeout = 0;
 		bool m_post = false;
 		bool m_started = false;
 		bool m_aborted = false;
