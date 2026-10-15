@@ -199,7 +199,7 @@ QList<Tag> JavascriptApi::makeTags(const QJSValue &tags, Site *site) const
 
 		QString type;
 		int typeId = -1;
-		if (tag.hasProperty("type") && !tag.property("type").isUndefined()) {
+		if (tag.hasProperty("type") && !tag.property("type").isUndefined() && !tag.property("type").isNull()) {
 			if (tag.property("type").isNumber()) {
 				typeId = tag.property("type").toInt();
 			} else {
@@ -209,7 +209,7 @@ QList<Tag> JavascriptApi::makeTags(const QJSValue &tags, Site *site) const
 		getProperty(tag, "typeId", typeId);
 
 		QStringList related;
-		if (tag.hasProperty("related") && !tag.property("related").isUndefined()) {
+		if (tag.hasProperty("related") && !tag.property("related").isUndefined() && !tag.property("related").isNull()) {
 			if (tag.property("related").isArray()) {
 				related = jsToStringList(tag.property("related"));
 			} else {
