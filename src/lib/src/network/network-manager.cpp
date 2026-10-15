@@ -62,6 +62,11 @@ void NetworkManager::setIgnoreSslErrors(bool ignore)
 	m_manager->setIgnoreSslErrors(ignore);
 }
 
+void NetworkManager::setFlareSolverr(const QUrl &solver, const QStringList &hosts, int msTimeout)
+{
+	m_manager->setFlareSolverr(solver, hosts, msTimeout);
+}
+
 
 NetworkReply *NetworkManager::get(QNetworkRequest request, int type)
 {

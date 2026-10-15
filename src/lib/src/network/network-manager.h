@@ -6,6 +6,8 @@
 #include <QPair>
 #include <QPointer>
 #include <QQueue>
+#include <QStringList>
+#include <QUrl>
 #include "throttling-manager.h"
 
 
@@ -34,6 +36,7 @@ class NetworkManager : public QObject
 		QNetworkCookieJar *cookieJar() const;
 		void setCookieJar(QNetworkCookieJar *cookieJar);
 		void setIgnoreSslErrors(bool ignore);
+		void setFlareSolverr(const QUrl &solver, const QStringList &hosts, int msTimeout);
 
 		NetworkReply *get(QNetworkRequest request, int type = -1);
 		NetworkReply *post(QNetworkRequest request, QByteArray data, int type = -1);

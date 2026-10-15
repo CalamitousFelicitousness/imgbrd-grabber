@@ -4,6 +4,8 @@
 #include <QNetworkAccessManager>
 #include <QQueue>
 #include <QString>
+#include <QStringList>
+#include <QUrl>
 
 
 class QNetworkReply;
@@ -19,6 +21,7 @@ class CustomNetworkAccessManager : public QNetworkAccessManager
 		QNetworkReply *get(const QNetworkRequest &request);
 		QNetworkReply *post(const QNetworkRequest &request, const QByteArray &data);
 		void setIgnoreSslErrors(bool ignore);
+		void setFlareSolverr(const QUrl &solver, const QStringList &hosts, int msTimeout);
 		void sslErrorHandler(QNetworkReply *reply, const QList<QSslError> &errors);
 
 		static QQueue<QString> NextFiles;
@@ -29,6 +32,9 @@ class CustomNetworkAccessManager : public QNetworkAccessManager
 
 	private:
 		bool m_ignoreSslErrors = false;
+		QUrl m_flareSolverr;
+		QStringList m_flareSolverrHosts;
+		int m_flareSolverrTimeout = 60000;
 };
 
 #endif // CUSTOMNETWORKACCESSMANAGER_H

@@ -8,6 +8,7 @@
 #include <QStringList>
 #include "functions.h"
 #include "logger.h"
+#include "network/flaresolverr-reply.h"
 #include "vendor/qcustomnetworkreply.h"
 
 QQueue<QString> CustomNetworkAccessManager::NextFiles;
@@ -115,6 +116,11 @@ QNetworkReply *CustomNetworkAccessManager::makeTestReply(const QNetworkRequest &
 
 QNetworkReply *CustomNetworkAccessManager::get(const QNetworkRequest &request)
 {
+	// Checked before test mode so tests exercise the routing, with the solver itself answered from files
+	if (m_flareSolverr.isValid() && m_flareSolverrHosts.contains(request.url().host(), Qt::CaseInsensitive)) {
+		return new FlareSolverrReply(request, m_flareSolverr, m_flareSolverrTimeout, this);
+	}
+
 	if (isTestModeEnabled()) {
 		return makeTestReply(request);
 	}
@@ -136,6 +142,13 @@ QNetworkReply *CustomNetworkAccessManager::post(const QNetworkRequest &request, 
 void CustomNetworkAccessManager::setIgnoreSslErrors(bool ignore)
 {
 	m_ignoreSslErrors = ignore;
+}
+
+void CustomNetworkAccessManager::setFlareSolverr(const QUrl &solver, const QStringList &hosts, int msTimeout)
+{
+	m_flareSolverr = solver;
+	m_flareSolverrHosts = hosts;
+	m_flareSolverrTimeout = msTimeout;
 }
 
 /**
