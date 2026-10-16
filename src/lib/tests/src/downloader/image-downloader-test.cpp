@@ -1,5 +1,6 @@
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTimer>
@@ -98,6 +99,47 @@ TEST_CASE("ImageDownloader")
 
 		assertDownload(profile, img, &downloader, expected, true);
 	}
+
+	SECTION("Downloads over an interrupted download's leftover temporary file")
+	{
+		QFile stale("tests/resources/tmp/out.jpg.tmp");
+		REQUIRE(stale.open(QFile::WriteOnly));
+		stale.write("partial");
+		stale.close();
+
+		auto img = createImage(profile, site);
+		ImageDownloader downloader(profile, img, "out.jpg", "tests/resources/tmp", 1, false, false, nullptr, false, false);
+
+		QList<ImageSaveResult> expected;
+		expected.append({ QDir::toNativeSeparators("tests/resources/tmp/out.jpg"), Image::Size::Full, Image::SaveResult::Saved });
+
+		assertDownload(profile, img, &downloader, expected, true, false, false, false);
+		REQUIRE(!QFile::exists("tests/resources/tmp/out.jpg.tmp"));
+		REQUIRE(QFileInfo("tests/resources/tmp/out.jpg").size() == QFileInfo("tests/resources/image_1x1.png").size());
+		QFile::remove("tests/resources/tmp/out.jpg");
+	}
+
+	#ifdef Q_OS_WIN
+		SECTION("Leaves a temporary file another download is still writing")
+		{
+			QFile writing("tests/resources/tmp/out.jpg.tmp");
+			REQUIRE(writing.open(QFile::WriteOnly | QFile::Truncate));
+			writing.write("in progress");
+			writing.flush();
+
+			auto img = createImage(profile, site);
+			ImageDownloader downloader(profile, img, "out.jpg", "tests/resources/tmp", 1, false, false, nullptr, false, false);
+
+			QList<ImageSaveResult> expected;
+			expected.append({ QDir::toNativeSeparators("tests/resources/tmp/out.jpg.tmp"), Image::Size::Full, Image::SaveResult::AlreadyExistsDisk });
+
+			assertDownload(profile, img, &downloader, expected, true, true, false, false);
+			REQUIRE(writing.isOpen());
+			writing.close();
+			REQUIRE(QFileInfo("tests/resources/tmp/out.jpg.tmp").size() == 11);
+			QFile::remove("tests/resources/tmp/out.jpg.tmp");
+		}
+	#endif
 
 	SECTION("SuccessLoadTags")
 	{

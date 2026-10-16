@@ -225,6 +225,13 @@ void ImageDownloader::loadedSave(Image::LoadTagsResult result)
 		}
 	}
 
+	// A finished download is renamed off its temporary path, so a file still there is what an
+	// interrupted one (quit, crash) left behind. preSave() would report it as already on disk.
+	// One being written by another download is open without delete sharing on Windows, so stays.
+	if (QFile::exists(m_temporaryPath) && QFile::remove(m_temporaryPath)) {
+		log(QStringLiteral("Removed an interrupted download's leftover `%1`").arg(m_temporaryPath), Logger::Info);
+	}
+
 	// Try to save the image if it's already loaded or exists somewhere else on disk
 	if (!m_force) {
 		// Check if the destination files already exist
