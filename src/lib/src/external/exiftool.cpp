@@ -4,7 +4,9 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFileInfo>
+#include <QPointer>
 #include <QProcess>
+#include <QSharedPointer>
 #include <QStorageInfo>
 #include <QUuid>
 #include "logger.h"
@@ -349,15 +351,32 @@ bool Exiftool::runOnWorker(const std::function<bool()> &work)
 		return work();
 	}
 
-	bool result = false;
+	// The task owns its state: QCoreApplication::exit() makes every nested loop return at once, so
+	// this call can be gone, its stack with it, before the worker reaches the task
+	struct Task
+	{
+		std::function<bool()> work;
+		bool result = false;
+		bool done = false;
+		QPointer<QEventLoop> loop; // Only touched on this thread
+	};
+	const auto task = QSharedPointer<Task>::create();
+	task->work = work;
+
 	QEventLoop loop;
-	QMetaObject::invokeMethod(m_worker, [&]() {
-		result = work();
-		QMetaObject::invokeMethod(&loop, &QEventLoop::quit, Qt::QueuedConnection);
+	task->loop = &loop;
+	QMetaObject::invokeMethod(m_worker, [this, task]() {
+		task->result = task->work();
+		QMetaObject::invokeMethod(this, [task]() {
+			task->done = true;
+			if (!task->loop.isNull()) {
+				task->loop->quit();
+			}
+		}, Qt::QueuedConnection);
 	}, Qt::QueuedConnection);
 	loop.exec();
 
-	return result;
+	return task->done && task->result;
 }
 
 

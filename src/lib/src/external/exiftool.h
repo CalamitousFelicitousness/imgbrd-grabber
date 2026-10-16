@@ -32,6 +32,10 @@ class Exiftool : public QObject
 		static bool isOnRemoteVolume(const QString &path);
 		static QString sidecarPath(const QString &file, bool noExtension);
 
+		// Runs `work` on the worker thread while the caller keeps its event loop spinning; false if
+		// that loop was made to return first (QCoreApplication::exit), the work still runs later
+		bool runOnWorker(const std::function<bool()> &work);
+
 	public slots:
 		bool start(int msecs = 30000);
 		bool setMetadata(const QString &file, const QMap<QString, QString> &metadata, bool clear = false, bool keepColorProfile = true, SidecarFile sidecarFile = SidecarFile::OnError, bool sidecarFileNoExtension = false, int msecs = 30000);
@@ -40,9 +44,6 @@ class Exiftool : public QObject
 		bool stop(int msecs = 30000);
 
 	private:
-		// Runs `work` on the worker thread while the caller keeps its event loop spinning
-		bool runOnWorker(const std::function<bool()> &work);
-
 		QThread m_thread;
 		ExiftoolWorker *m_worker;
 };

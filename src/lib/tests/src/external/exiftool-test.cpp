@@ -1,10 +1,14 @@
+#include <QCoreApplication>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
 #include <QString>
 #include <QStringList>
+#include <QThread>
 #include <QTimer>
+#include <atomic>
 #include "catch.h"
 #include "external/exiftool.h"
 
@@ -170,5 +174,42 @@ TEST_CASE("Exiftool", "[.][exiftool]")
 
 		QFile::remove(target);
 		QDir().rmdir(remoteDir);
+	}
+}
+
+TEST_CASE("Exiftool worker")
+{
+	// What quitting does to downloads writing metadata: QCoreApplication::exit() makes every nested
+	// loop return at once, here one call waiting on the worker and a second queued behind it
+	SECTION("Calls whose wait is cut short leave their queued work valid")
+	{
+		Exiftool exiftool;
+		std::atomic<int> ran { 0 };
+		bool second = true;
+
+		QTimer::singleShot(20, [&]() {
+			QTimer::singleShot(20, []() { QCoreApplication::exit(); });
+			second = exiftool.runOnWorker([&ran]() { ran++; return true; });
+		});
+		const bool first = exiftool.runOnWorker([&ran]() { QThread::msleep(300); ran++; return true; });
+
+		REQUIRE(!first);
+		REQUIRE(!second);
+
+		// exit() keeps later nested loops returning at once until exec() clears it
+		QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+		QCoreApplication::exec();
+
+		QEventLoop wait;
+		QTimer::singleShot(600, &wait, &QEventLoop::quit);
+		wait.exec();
+		REQUIRE(ran == 2);
+	}
+
+	SECTION("Returns the work's result")
+	{
+		Exiftool exiftool;
+		REQUIRE(exiftool.runOnWorker([]() { return true; }));
+		REQUIRE(!exiftool.runOnWorker([]() { return false; }));
 	}
 }
