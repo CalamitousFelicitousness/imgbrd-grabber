@@ -1260,7 +1260,12 @@ void DownloadsTab::getAllPause()
 		if (m_getAllDownloading.isEmpty()) {
 			getAllFinishedImages(QList<QSharedPointer<Image>>());
 		} else {
-			for (const auto &download : qAsConst(m_getAllDownloading)) {
+			// save() can finish synchronously and remove entries from m_getAllDownloading
+			const auto downloading = m_getAllDownloading;
+			for (const auto &download : downloading) {
+				if (!m_getAllDownloading.contains(download)) {
+					continue;
+				}
 				getAllGetImage(download, download.siteId(m_groupBatchs));
 			}
 		}
