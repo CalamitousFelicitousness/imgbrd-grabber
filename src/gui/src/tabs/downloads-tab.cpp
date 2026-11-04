@@ -752,7 +752,10 @@ void DownloadsTab::getAllGetPages()
 	m_progressDialog->setCurrentMax(pages);
 	m_batchCurrentPackSize = images;
 
-	getAllFinishedImages(m_currentPackLoader->next());
+	m_packLoading = true;
+	const QList<QSharedPointer<Image>> results = m_currentPackLoader->next();
+	m_packLoading = false;
+	getAllFinishedImages(results);
 }
 
 /**
@@ -1257,7 +1260,9 @@ void DownloadsTab::getAllPause()
 	} else {
 		log(QStringLiteral("Recovery of downloads..."), Logger::Info);
 		m_getAll = true;
-		if (m_getAllDownloading.isEmpty()) {
+		if (m_packLoading) {
+			// PackLoader::next() is still waiting on a page and resumes the run when it returns
+		} else if (m_getAllDownloading.isEmpty()) {
 			getAllFinishedImages(QList<QSharedPointer<Image>>());
 		} else {
 			// save() can finish synchronously and remove entries from m_getAllDownloading

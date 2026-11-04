@@ -74,6 +74,7 @@ class ImageDownloader : public QObject
 		NetworkReply *m_reply = nullptr;
 		QUrl m_url;
 		bool m_tryingSample = false;
+		bool m_saving = false;
 };
 
 #endif // IMAGE_DOWNLOADER_H

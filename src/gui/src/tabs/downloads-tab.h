@@ -136,6 +136,7 @@ class DownloadsTab : public QWidget
 		QMap<QString, QIcon> m_icons;
 		QQueue<PackLoader*> m_waitingPackLoaders;
 		PackLoader *m_currentPackLoader = nullptr;
+		bool m_packLoading = false;
 		QList<Site*> m_getAllLogins;
 		int m_batchAutomaticRetries, m_getAllImagesCount, m_batchCurrentPackSize;
 		QAtomicInt m_getAllCurrentlyProcessing;

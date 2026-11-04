@@ -100,6 +100,38 @@ TEST_CASE("ImageDownloader")
 		assertDownload(profile, img, &downloader, expected, true);
 	}
 
+	SECTION("A save while one is already running is ignored")
+	{
+		auto img = createImage(profile, site);
+		ImageDownloader downloader(profile, img, "out.jpg", "tests/resources/tmp", 1, false, false, nullptr, false, false);
+
+		qRegisterMetaType<QList<ImageSaveResult>>();
+		QSignalSpy spy(&downloader, SIGNAL(saved(QSharedPointer<Image>, QList<ImageSaveResult>)));
+		downloader.save();
+		downloader.save();
+		REQUIRE(spy.wait());
+		REQUIRE(!spy.wait(500));
+		REQUIRE(spy.count() == 1);
+		QFile::remove("tests/resources/tmp/out.jpg");
+	}
+
+	SECTION("Restarts after an abort")
+	{
+		auto img = createImage(profile, site);
+		ImageDownloader downloader(profile, img, "out.jpg", "tests/resources/tmp", 1, false, false, nullptr, false, false);
+
+		qRegisterMetaType<QList<ImageSaveResult>>();
+		QSignalSpy spy(&downloader, SIGNAL(saved(QSharedPointer<Image>, QList<ImageSaveResult>)));
+		downloader.save();
+		downloader.abort();
+		REQUIRE(spy.count() == 0);
+		downloader.save();
+		REQUIRE(spy.wait());
+		REQUIRE(spy.count() == 1);
+		REQUIRE(spy.first()[1].value<QList<ImageSaveResult>>().first().result == Image::SaveResult::Saved);
+		QFile::remove("tests/resources/tmp/out.jpg");
+	}
+
 	SECTION("Downloads over an interrupted download's leftover temporary file")
 	{
 		QFile stale("tests/resources/tmp/out.jpg.tmp");

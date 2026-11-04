@@ -36,12 +36,14 @@ ImageDownloader::ImageDownloader(Profile *profile, QSharedPointer<Image> img, QS
 	: QObject(parent), m_profile(profile), m_image(std::move(img)), m_fileDownloader(false, this), m_filename(std::move(filename)), m_path(std::move(path)), m_loadTags(loadTags), m_count(count), m_addMd5(addMd5), m_startCommands(startCommands), m_writeError(false), m_rotate(rotate), m_force(force), m_postSave(postSave), m_forceExisting(forceExisting)
 {
 	setSize(size);
+	connect(this, &ImageDownloader::saved, this, [this]() { m_saving = false; });
 }
 
 ImageDownloader::ImageDownloader(Profile *profile, QSharedPointer<Image> img, QStringList paths, int count, bool addMd5, bool startCommands, QObject *parent, bool rotate, bool force, Image::Size size, bool postSave, bool forceExisting)
 	: QObject(parent), m_profile(profile), m_image(std::move(img)), m_fileDownloader(false, this), m_loadTags(false), m_paths(std::move(paths)), m_count(count), m_addMd5(addMd5), m_startCommands(startCommands), m_writeError(false), m_rotate(rotate), m_force(force), m_postSave(postSave), m_forceExisting(forceExisting)
 {
 	setSize(size);
+	connect(this, &ImageDownloader::saved, this, [this]() { m_saving = false; });
 }
 
 ImageDownloader::~ImageDownloader()
@@ -78,6 +80,12 @@ void ImageDownloader::setBlacklist(Blacklist *blacklist)
 
 void ImageDownloader::save()
 {
+	// A save past its network stage (copy, metadata write) ignores abort() and emits saved on its own
+	if (m_saving) {
+		return;
+	}
+	m_saving = true;
+
 	// Try to build a path first if we don't need tags for the filename, to check for the "same dir" MD5 setting
 	const int filenameTagLevel = m_filename.needExactTags(m_image->parentSite(), m_profile->getSettings());
 	const bool filenameNeedExactTags = filenameTagLevel == 2 || (filenameTagLevel == 1 && m_image->hasUnknownTag());
@@ -398,6 +406,9 @@ void ImageDownloader::networkError(NetworkReply::NetworkError error, const QStri
 
 		log(QStringLiteral("Network error for the image: `%1`: %2 (%3)").arg(m_image->url().toString()).arg(error).arg(msg), Logger::Error);
 		emit saved(m_image, makeResult(m_paths, Image::SaveResult::NetworkError));
+	} else {
+		// Aborted without emitting saved, so the next save() restarts it
+		m_saving = false;
 	}
 }
 
