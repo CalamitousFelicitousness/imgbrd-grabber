@@ -2,6 +2,7 @@
 #include <QHostAddress>
 #include <QNetworkRequest>
 #include <QTcpServer>
+#include <QTcpSocket>
 #include <QUrl>
 #include "catch.h"
 #include "logger.h"
@@ -171,6 +172,48 @@ TEST_CASE("NetworkManager", "[.][network]")
 		loop2.exec();
 
 		REQUIRE(nextReceived);
+	}
+
+	/**
+	 * With one slot, start a request whose finished handler starts a second one and waits for it
+	 * in a nested event loop, as Image::parseDetails does through an exiftool write.
+	 * The second request should still be dispatched.
+	 */
+	SECTION("Slot is released while a finished handler runs a nested loop")
+	{
+		QTcpServer server;
+		REQUIRE(server.listen(QHostAddress::LocalHost, 0));
+		QObject::connect(&server, &QTcpServer::newConnection, [&server]() {
+			QTcpSocket *socket = server.nextPendingConnection();
+			QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket]() {
+				socket->readAll();
+				socket->write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+				socket->disconnectFromHost();
+			});
+		});
+
+		NetworkManager manager;
+		manager.setMaxConcurrency(1);
+
+		const QUrl url(QStringLiteral("http://127.0.0.1:%1/").arg(server.serverPort()));
+		NetworkReply *first = manager.get(QNetworkRequest(url));
+
+		bool innerReceived = false;
+		QObject::connect(first, &NetworkReply::finished, [&]() {
+			NetworkReply *inner = manager.get(QNetworkRequest(url));
+			QEventLoop nested;
+			QObject::connect(inner, &NetworkReply::finished, &nested, &QEventLoop::quit);
+			QTimer::singleShot(3000, &nested, &QEventLoop::quit);
+			nested.exec();
+			innerReceived = !inner->isRunning();
+		});
+
+		QEventLoop loop;
+		QObject::connect(first, &NetworkReply::finished, &loop, &QEventLoop::quit, Qt::QueuedConnection);
+		QTimer::singleShot(5000, &loop, &QEventLoop::quit);
+		loop.exec();
+
+		REQUIRE(innerReceived);
 	}
 
 	setTestModeEnabled(true);

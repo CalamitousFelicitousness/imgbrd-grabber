@@ -88,6 +88,14 @@ NetworkReply *NetworkManager::post(QNetworkRequest request, QByteArray data, int
 
 void NetworkManager::append(NetworkReply *reply, int type)
 {
+	// Connected before the caller gets the reply, so the slot is released ahead of receivers that
+	// run a nested event loop in their finished handler (Image::parseDetails, through exiftool)
+	connect(reply, &NetworkReply::finished, this, [this, reply]() {
+		if (m_running.remove(reply)) {
+			next();
+		}
+	});
+
 	m_queue.append({ type, reply });
 
 	int activeQueries = m_activeQueries.fetchAndStoreRelaxed(m_maxConcurrency);
@@ -114,7 +122,7 @@ void NetworkManager::next()
 	QPointer<NetworkReply> reply = pair.second;
 
 	if (!reply.isNull() && reply->isRunning()) {
-		connect(reply, &NetworkReply::finished, this, &NetworkManager::next);
+		m_running.insert(reply);
 		m_throttlingManager.start(type, reply);
 	} else {
 		next();

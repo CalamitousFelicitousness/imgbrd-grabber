@@ -6,6 +6,7 @@
 #include <QPair>
 #include <QPointer>
 #include <QQueue>
+#include <QSet>
 #include <QStringList>
 #include <QUrl>
 #include "throttling-manager.h"
@@ -54,6 +55,7 @@ class NetworkManager : public QObject
 		int m_maxConcurrency = 6;
 		int m_transferTimeout = 0;
 		QQueue<QPair<int, QPointer<NetworkReply>>> m_queue;
+		QSet<NetworkReply*> m_running;
 		QAtomicInt m_activeQueries;
 };
 
