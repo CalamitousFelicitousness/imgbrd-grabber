@@ -26,6 +26,10 @@ void TagApiBase::load(bool rateLimit)
 {
 	log(QStringLiteral("[%1] Loading tags page `%2`").arg(m_site->url(), m_url.toString()), Logger::Info);
 
+	if (!rateLimit) {
+		m_rateLimitRetries = 0;
+	}
+
 	if (m_reply != nullptr) {
 		if (m_reply->isRunning()) {
 			m_reply->abort();
@@ -63,8 +67,15 @@ void TagApiBase::parseInternal()
 	// Detect HTTP 429 usage limit reached
 	const int statusCode = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 	if (statusCode == 429) {
-		log(QStringLiteral("[%1][%2] Limit reached (%3). New try.").arg(m_site->url(), m_api->getName(), QString::number(statusCode)), Logger::Warning);
-		load(true);
+		if (m_rateLimitRetries < m_site->rateLimitRetries()) {
+			m_rateLimitRetries++;
+			log(QStringLiteral("[%1][%2] Limit reached (%3). New try.").arg(m_site->url(), m_api->getName(), QString::number(statusCode)), Logger::Warning);
+			load(true);
+			return;
+		}
+
+		log(QStringLiteral("[%1][%2] Limit reached (%3), giving up after %4 retries").arg(m_site->url(), m_api->getName(), QString::number(statusCode), QString::number(m_rateLimitRetries)), Logger::Error);
+		emit finishedLoading(this, LoadResult::Error);
 		return;
 	}
 

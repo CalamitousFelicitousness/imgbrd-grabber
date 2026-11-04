@@ -1,5 +1,8 @@
+#include <QEventLoop>
 #include <QScopedPointer>
 #include <QSettings>
+#include <QTimer>
+#include "custom-network-access-manager.h"
 #include "models/page.h"
 #include "models/page-api.h"
 #include "models/profile.h"
@@ -64,5 +67,42 @@ TEST_CASE("PageApi")
 		pageApi.setLastPage(prevPage.pageInformation());
 
 		REQUIRE(pageApi.url().toString() == QString("https://danbooru.donmai.us/posts.xml?limit=25&page=b0&tags=test tag&login=user&api_key=test-api-key"));
+	}
+
+	SECTION("Rate limit retries are capped")
+	{
+		Site *site = sites.first();
+		site->setSetting("download/rate_limit_retries", 1, 5);
+		site->setSetting("download/throttle_retry", 0, 60);
+		site->loadConfig();
+
+		CustomNetworkAccessManager::NextFiles.enqueue("503");
+		CustomNetworkAccessManager::NextFiles.enqueue("503");
+
+		QStringList tags = QStringList() << "test";
+		Page page(profile, site, sites, tags);
+		PageApi pageApi(&page, profile, site, site->getApis().first(), tags);
+
+		bool finished = false;
+		PageApi::LoadResult result = PageApi::LoadResult::Ok;
+		QEventLoop loop;
+		QObject::connect(&pageApi, &PageApi::finishedLoading, &loop, [&](PageApi *, PageApi::LoadResult status) {
+			finished = true;
+			result = status;
+			loop.quit();
+		});
+		QTimer::singleShot(5000, &loop, &QEventLoop::quit);
+		pageApi.load();
+		loop.exec();
+
+		site->setSetting("download/rate_limit_retries", 5, 5);
+		site->setSetting("download/throttle_retry", 60, 60);
+		site->loadConfig();
+
+		REQUIRE(finished);
+		REQUIRE(result == PageApi::LoadResult::Error);
+		REQUIRE(CustomNetworkAccessManager::NextFiles.isEmpty());
+		REQUIRE(pageApi.errors().count() == 1);
+		REQUIRE(pageApi.errors().first().contains("giving up after 1 retries"));
 	}
 }

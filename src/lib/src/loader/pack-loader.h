@@ -3,6 +3,7 @@
 
 #include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QQueue>
 #include <QSharedPointer>
 #include "downloader/download-query-group.h"
@@ -22,7 +23,7 @@ class PackLoader : public QObject
 		const DownloadQueryGroup &query() const;
 		int nextPackSize() const;
 		bool start(bool login = true);
-		void abort();
+		void abort(bool currentPage = false);
 		bool hasNext() const;
 		QList<QSharedPointer<Image>> next();
 
@@ -41,6 +42,7 @@ class PackLoader : public QObject
 		bool m_overflowGallery = false;
 		bool m_overflowHasNext = false;
 		bool m_abort = false;
+		QPointer<Page> m_currentPage;
 };
 
 #endif // PACK_LOADER_H

@@ -773,6 +773,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 		}
 		m_closeConfirmed = true;
 		m_monitoringCenter->stop();
+		m_downloadsTab->abortForQuit();
 	}
 
 	// Monitor checks, logins and exiftool calls wait in nested event loops. A close accepted inside

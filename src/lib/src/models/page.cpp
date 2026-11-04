@@ -139,6 +139,7 @@ void Page::load(bool rateLimit)
 		return;
 	}
 
+	m_aborted = false;
 	connect(m_pageApis[m_currentApi], &PageApi::finishedLoading, this, &Page::loadFinished);
 	m_pageApis[m_currentApi]->load(rateLimit);
 }
@@ -158,6 +159,14 @@ void Page::loadFinished(PageApi *api, PageApi::LoadResult status)
 			Analytics::getInstance().sendEvent("Page load", "Error", eventLabel);
 		}
 		m_errors.append(errors);
+
+		// An aborted load is not a failure of this API, so the next one must not take over
+		if (m_aborted) {
+			m_errors.append(tr("Loading aborted."));
+			emit failedLoading(this);
+			return;
+		}
+
 		fallback();
 	}
 }
@@ -166,6 +175,7 @@ void Page::abort()
 	if (m_currentApi < 0 || m_currentApi >= m_pageApis.count()) {
 		return;
 	}
+	m_aborted = true;
 	m_pageApis[m_currentApi]->abort();
 }
 

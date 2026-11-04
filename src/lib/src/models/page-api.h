@@ -107,6 +107,7 @@ class PageApi : public QObject
 		bool m_imagesCountSafe, m_pagesCountSafe;
 		bool m_loading = false;
 		bool m_loaded = false;
+		int m_rateLimitRetries = 0;
 };
 
 Q_DECLARE_METATYPE(PageApi::LoadResult)

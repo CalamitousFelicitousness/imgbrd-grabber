@@ -74,6 +74,7 @@ class Page : public QObject
 	private:
 		Site *m_site;
 		int m_currentApi;
+		bool m_aborted = false;
 		QList<Api*> m_siteApis;
 		QList<PageApi*> m_pageApis;
 		int m_regexApi;

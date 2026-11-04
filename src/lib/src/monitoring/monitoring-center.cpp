@@ -101,6 +101,7 @@ bool MonitoringCenter::checkMonitor(Monitor &monitor, SearchQuery search, QStrin
 		// Create a pack loader, without a parent: the parent would delete this stack object if it went away during a wait
 		DownloadQueryGroup query(m_profile->getSettings(), search, 1, perPage, MONITOR_CHECK_TOTAL, postFiltering, site);
 		PackLoader loader(m_profile, query, perPage);
+		m_currentLoader = &loader;
 
 		// A site that simply has no posts for this tag is NOT a failure - only a real page
 		// error is. Counting "no results" as failure froze lastSuccess permanently for any
@@ -454,6 +455,11 @@ void MonitoringCenter::stop()
 		return;
 	}
 	m_stop = true;
+
+	// A page held open by rate-limit retries would otherwise keep the check's nested loop, and a quit, waiting
+	if (!m_currentLoader.isNull()) {
+		m_currentLoader->abort(true);
+	}
 
 	log(QStringLiteral("Monitoring stopped"), Logger::Info);
 }

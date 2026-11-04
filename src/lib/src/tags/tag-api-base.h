@@ -49,6 +49,7 @@ class TagApiBase : public QObject
 		QUrl m_url;
 		QMap<QString, QString> m_headers;
 		NetworkReply *m_reply;
+		int m_rateLimitRetries = 0;
 };
 
 Q_DECLARE_METATYPE(TagApiBase::LoadResult)

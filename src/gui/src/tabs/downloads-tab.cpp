@@ -446,6 +446,19 @@ bool DownloadsTab::isDownloading() const
 	return m_getAll;
 }
 
+// A pause that also aborts the page being loaded; restore.igl carries the batch to the next session
+void DownloadsTab::abortForQuit()
+{
+	m_getAll = false;
+	if (m_currentPackLoader != nullptr) {
+		m_currentPackLoader->abort(true);
+	}
+	const auto downloaders = m_getAllImageDownloaders; // Local copy to avoid writes during iteration
+	for (auto it = downloaders.constBegin(); it != downloaders.constEnd(); ++it) {
+		it.value()->abort();
+	}
+}
+
 void DownloadsTab::batchConvert()
 {
 	// We don't use a QSet because the order of rows is important

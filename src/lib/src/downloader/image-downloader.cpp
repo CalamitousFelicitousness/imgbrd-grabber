@@ -85,6 +85,7 @@ void ImageDownloader::save()
 		return;
 	}
 	m_saving = true;
+	m_rateLimitRetries = 0;
 
 	// Try to build a path first if we don't need tags for the filename, to check for the "same dir" MD5 setting
 	const int filenameTagLevel = m_filename.needExactTags(m_image->parentSite(), m_profile->getSettings());
@@ -398,7 +399,8 @@ void ImageDownloader::networkError(NetworkReply::NetworkError error, const QStri
 
 		// Detect HTTP 429 / 503 / 509 usage limit reached
 		const int statusCode = m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-		if (statusCode == 429 || statusCode == 503 || statusCode == 509) {
+		if ((statusCode == 429 || statusCode == 503 || statusCode == 509) && m_rateLimitRetries < m_image->parentSite()->rateLimitRetries()) {
+			m_rateLimitRetries++;
 			log(QStringLiteral("Rate limit reached (%1) for the image `%2`. New try.").arg(QString::number(statusCode), m_image->url().toString()), Logger::Warning);
 			loadImage(true);
 			return;

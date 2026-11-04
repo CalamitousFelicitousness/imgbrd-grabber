@@ -109,6 +109,11 @@ bool NetworkReply::isRunning() const
 		return true;
 	}
 
+	// Started with a throttle delay that has not elapsed yet (a rate-limit retry waits minutes here)
+	if (timer.isActive()) {
+		return true;
+	}
+
 	return m_reply != nullptr && m_reply->isRunning();
 }
 
@@ -176,12 +181,10 @@ void NetworkReply::abort()
 	}
 
 	m_aborted = true;
+	timer.stop();
 	if (m_reply != nullptr) {
 		m_reply->abort();
 	} else {
 		emit finished();
-	}
-	if (timer.isActive()) {
-		timer.stop();
 	}
 }

@@ -155,6 +155,7 @@ class Image : public QObject, public Downloadable
 		Site *m_parentSite;
 		bool m_loadingDetails = false;
 		bool m_loadedDetails = false;
+		int m_rateLimitRetries = 0;
 		bool m_detailsParsWarnAsErr = false;
 
 		// Shared

@@ -37,6 +37,9 @@ QNetworkReply *CustomNetworkAccessManager::makeErrorReply(const QNetworkRequest 
 	if (code == QLatin1String("404")) {
 		reply->setHttpStatusCode(404, "Not Found");
 		reply->setNetworkError(QNetworkReply::ContentNotFoundError, QStringLiteral("Not Found"));
+	} else if (code == QLatin1String("503")) {
+		reply->setHttpStatusCode(503, "Service Unavailable");
+		reply->setNetworkError(QNetworkReply::ServiceUnavailableError, QStringLiteral("Service Unavailable"));
 	} else if (code == QLatin1String("cookie")) {
 		cookieJar()->insertCookie(QNetworkCookie("test_cookie", "test_value"));
 		reply->setHttpStatusCode(200, "OK");
@@ -67,7 +70,7 @@ QNetworkReply *CustomNetworkAccessManager::makeTestReply(const QNetworkRequest &
 	}
 
 	// Error testing
-	if (path == QLatin1String("404") || path == QLatin1String("500") || path == QLatin1String("cookie") || path == QLatin1String("redirect") || path == QLatin1String("hang")) {
+	if (path == QLatin1String("404") || path == QLatin1String("500") || path == QLatin1String("503") || path == QLatin1String("cookie") || path == QLatin1String("redirect") || path == QLatin1String("hang")) {
 		return makeErrorReply(request, path);
 	}
 

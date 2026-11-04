@@ -356,6 +356,8 @@ NetworkReply *Site::post(const QUrl &url, QByteArray data, Site::QueryType type,
 
 
 QVariant Site::setting(const QString &key, const QVariant &def) const { return m_settings->value(key, def); }
+// A 429/503/509 that persists this many retries (each throttle_retry apart) is an outage, not a limit
+int Site::rateLimitRetries() const { return m_settings->value("download/rate_limit_retries", 5).toInt(); }
 void Site::setSetting(const QString &key, const QVariant &value, const QVariant &def) const { m_settings->setValue(key, value, def); }
 void Site::syncSettings() const { m_settings->sync(); }
 MixedSettings *Site::settings() const { return m_settings; }

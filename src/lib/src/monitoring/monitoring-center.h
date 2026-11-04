@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QSharedPointer>
 #include <QString>
 
@@ -12,6 +13,7 @@ class DownloadQueue;
 class Favorite;
 class ImageDownloader;
 class Monitor;
+class PackLoader;
 class Profile;
 class SearchQuery;
 class Site;
@@ -72,6 +74,7 @@ class MonitoringCenter : public QObject
 		bool m_waitingForQueue = false;
 		bool m_changed = false;
 		bool m_stop = false;
+		QPointer<PackLoader> m_currentLoader;
 };
 
 #endif // MONITORING_CENTER_H

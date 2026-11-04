@@ -103,6 +103,7 @@ class DownloadsTab : public QWidget
 		// Others
 		QIcon &getIcon(const QString &path);
 		bool isDownloading() const;
+		void abortForQuit();
 		void batchDownloadsTableContextMenu(const QPoint &pos);
 		void batchConvert();
 

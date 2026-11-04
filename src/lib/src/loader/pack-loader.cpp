@@ -39,9 +39,13 @@ bool PackLoader::start(bool login)
 	return true;
 }
 
-void PackLoader::abort()
+// Without currentPage, the page being loaded still finishes so its posts are not lost
+void PackLoader::abort(bool currentPage)
 {
 	m_abort = true;
+	if (currentPage && !m_currentPage.isNull()) {
+		m_currentPage->abort();
+	}
 }
 
 bool PackLoader::hasNext() const
@@ -85,8 +89,10 @@ QList<QSharedPointer<Image>> PackLoader::next()
 		Page *page = gallery ? m_pendingGalleries.dequeue() : m_pendingPages.dequeue();
 		QObject::connect(page, &Page::finishedLoading, &loop, &QEventLoop::quit);
 		QObject::connect(page, &Page::failedLoading, &loop, &QEventLoop::quit);
+		m_currentPage = page;
 		page->load(false);
 		loop.exec();
+		m_currentPage = nullptr;
 		emit finishedPage(page);
 
 		// Add results to the data object

@@ -475,6 +475,10 @@ void Image::loadDetails(bool rateLimit)
 		m_loadDetails->deleteLater();
 	}
 
+	if (!rateLimit) {
+		m_rateLimitRetries = 0;
+	}
+
 	log(QStringLiteral("Loading image details from `%1`").arg(m_pageUrl.toString()), Logger::Info);
 
 	Site::QueryType type = rateLimit ? Site::QueryType::Retry : Site::QueryType::Details;
@@ -511,7 +515,8 @@ void Image::parseDetails()
 	}
 
 	const int statusCode = m_loadDetails->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-	if (statusCode == 429 || statusCode == 503 || statusCode == 509) {
+	if ((statusCode == 429 || statusCode == 503 || statusCode == 509) && m_rateLimitRetries < m_parentSite->rateLimitRetries()) {
+		m_rateLimitRetries++;
 		log(QStringLiteral("Details limit reached (HTTP %1). New try.").arg(statusCode));
 		loadDetails(true);
 		return;

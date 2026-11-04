@@ -68,6 +68,7 @@ class Site : public QObject
 		const QList<QNetworkCookie> &cookies() const;
 		PersistentCookieJar *cookieJar() const;
 		QVariant setting(const QString &key, const QVariant &def = QVariant()) const;
+		int rateLimitRetries() const;
 		void setSetting(const QString &key, const QVariant &value, const QVariant &def) const;
 		void syncSettings() const;
 		MixedSettings *settings() const;

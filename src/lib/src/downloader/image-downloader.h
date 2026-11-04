@@ -75,6 +75,7 @@ class ImageDownloader : public QObject
 		QUrl m_url;
 		bool m_tryingSample = false;
 		bool m_saving = false;
+		int m_rateLimitRetries = 0;
 };
 
 #endif // IMAGE_DOWNLOADER_H

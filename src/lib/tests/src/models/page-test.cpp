@@ -1,5 +1,6 @@
 #include <QScopedPointer>
 #include <QSignalSpy>
+#include "custom-network-access-manager.h"
 #include "models/page.h"
 #include "models/profile.h"
 #include "models/site.h"
@@ -41,6 +42,23 @@ TEST_CASE("Page")
 		page.load();
 		page.abort();
 		REQUIRE(!spy.wait(1000));
+	}
+
+	SECTION("LoadAbortDoesNotFallBack")
+	{
+		CustomNetworkAccessManager::NextFiles.enqueue("hang");
+		Page page(profile, site, sites, QStringList() << "test");
+
+		QSignalSpy failed(&page, SIGNAL(failedLoading(Page*)));
+		QSignalSpy finished(&page, SIGNAL(finishedLoading(Page*)));
+		page.load();
+		page.abort();
+
+		REQUIRE(failed.count() == 1);
+		REQUIRE(page.errors().contains("Loading aborted."));
+		REQUIRE(!finished.wait(500));
+		REQUIRE(failed.count() == 1);
+		CustomNetworkAccessManager::NextFiles.clear();
 	}
 
 	SECTION("LoadTagsAbort")
